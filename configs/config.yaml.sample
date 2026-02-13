@@ -1,0 +1,101 @@
+server:
+  # http and grpc server configuration
+  http_port: 5555
+  grpc_port: 5556
+  # Bind address for servers (HTTP and gRPC)
+  host: 0.0.0.0
+  # grpc_host: Advertise address for service discovery (fallback when host is 0.0.0.0 and IP detection fails)
+  # Use cases:
+  #   - Container/VM with complex networking where auto-detection doesn't work
+  #   - Prefer specific network interface
+  #   - Custom hostname/DNS for service discovery
+  # If not set, defaults to "localhost" when IP detection fails
+  # Examples: "localhost", "192.168.1.100", "storage-node-01.internal"
+  grpc_host: "192.168.1.100"
+
+storage:
+  # node identifier
+  node_id: storage-node-01
+  # Directories for data of storage engine
+  data_dir: ./data
+  # Timezone for data storage and sharding
+  # Examples: "Asia/Tokyo", "+09:00", "UTC", "Local"
+  timezone: "UTC"
+  memory_store:
+    max_age: 24h # Duration to keep data in memory (data within this age is stored in memory)
+    max_size: 100000 # Max number of records in memory
+  flush:
+    interval: 5m # Flush to disk every 5 minutes (time-based trigger)
+    max_records: 50000 # Max record count before flush (count-based trigger, consistent with eviction)
+    max_wal_segments: 10 # Max WAL segments before flush (durability trigger)
+  # Multi-part columnar storage settings
+  # Files are split based on row count (primary) and size (safety limit)
+  multipart:
+    max_rows_per_part: 10000    # Primary: split when rows >= 10K (default: 10000)
+    max_part_size: 67108864     # Safety limit: 64MB per part (default: 64MB = 67108864 bytes)
+    min_rows_per_part: 1000     # Don't split if less than 1K rows (default: 1000)
+  # Sync settings for replica synchronization
+  sync:
+    enabled: true              # Enable sync functionality
+    startup_sync: true         # Sync from replicas on node startup
+    startup_timeout: 5m        # Timeout for startup sync
+    sync_batch_size: 1000      # Batch size for writing synced points
+    max_concurrent_syncs: 5    # Max concurrent shard syncs
+    anti_entropy:
+      enabled: true            # Enable anti-entropy background checker
+      interval: 1h             # Check interval for consistency
+      batch_size: 10000        # Batch size for checksum calculation
+
+etcd:
+  # etcd configuration
+  endpoints:
+    - http://localhost:2379
+  # Connection timeout
+  dial_timeout: 5s
+  # Optional authentication
+  username: ""
+  password: ""
+
+queue:
+  type: "nats"        # Options: nats (default), redis, kafka, memory
+
+  # Message queue (NATS) configuration
+  url: nats://localhost:4222
+  username: optional_user
+  password: optional_pass
+  
+  # Redis-specific
+  redis_db: 0
+  redis_stream: "soltix"
+  redis_group: "consumers"
+  redis_consumer: "consumer-1"
+
+  # Kafka-specific  
+  kafka_brokers: ["localhost:9092"]
+  kafka_group_id: "soltix-consumers"
+
+coordinator:
+  hash_threshold: 20         # number of nodes to switch from rendezvous to consistent hash
+  vnode_count: 200           # number of virtual nodes per physical node
+  replica_factor: 3          # number of replicas for each shard
+  shard_key_format: "daily"  # format of shard key: "daily", "monthly"
+
+replication:
+  # number of replicas for each data shard
+  factor: 3
+  strategy: async
+  # minimum replicas required for read and write operations
+  min_replicas_for_write: 1
+
+logging:
+  # logging configuration
+  level: debug
+  format: json
+  output_path: stdout # stdout, stderr, or file path
+  time_format: RFC3339
+
+auth:
+  enabled: true  # true = require API key, false = public access
+  api_keys:
+    - "e29771a2e3804fcb3068c159324a209e7ac9c4a707e31abeccf1bb0d8df0e6fd"
+    - "3a884590dc830a7a83d6e485f93aed0cf09da89a42982a9092718bfa89c62d15"

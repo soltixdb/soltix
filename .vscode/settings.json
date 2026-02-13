@@ -1,0 +1,111 @@
+{
+  // Go formatting - using gopls with gofumpt (configured below in gopls settings)
+  "go.formatTool": "default",
+  "go.useLanguageServer": true,
+  "go.lintOnSave": "workspace",
+  "go.vetOnSave": "workspace",
+  
+  // Editor settings
+  "[go]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    },
+    "editor.insertSpaces": false,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false
+  },
+  
+  // Go test settings
+  "go.testFlags": ["-v", "-race"],
+  "go.testOnSave": false,
+  "go.coverOnSave": false,
+  "go.coverageDecorator": {
+    "type": "gutter",
+    "coveredHighlightColor": "rgba(64,128,64,0.5)",
+    "uncoveredHighlightColor": "rgba(128,64,64,0.25)"
+  },
+  
+  // Go tools
+  "go.toolsManagement.autoUpdate": true,
+  "go.buildOnSave": "off",
+  "go.lintTool": "golangci-lint",
+  "go.lintFlags": ["--fast"],
+  
+  // Inlay hints
+  "go.inlayHints.assignVariableTypes": true,
+  "go.inlayHints.compositeLiteralFields": true,
+  "go.inlayHints.compositeLiteralTypes": true,
+  "go.inlayHints.constantValues": true,
+  "go.inlayHints.functionTypeParameters": true,
+  "go.inlayHints.parameterNames": true,
+  "go.inlayHints.rangeVariableTypes": true,
+  
+  // Diagnostics
+  "go.diagnostic.annotations": true,
+  "go.diagnostic.staticcheck": true,
+  "go.diagnostic.vulncheck": "Imports",
+  
+  // Editor UI
+  "editor.rulers": [80, 120],
+  "editor.minimap.enabled": true,
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": "active",
+  
+  // Files
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/vendor": true
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/vendor/**": true
+  },
+  
+  // Go modules
+  "gopls": {
+    "build.buildFlags": ["-tags=integration"],
+    "formatting.gofumpt": true,
+    "ui.semanticTokens": true,
+    "ui.completion.usePlaceholders": true,
+    "ui.diagnostic.analyses": {
+      "fieldalignment": false,
+      "shadow": true,
+      "unusedparams": true,
+      "unusedwrite": true
+    }
+},
+"cSpell.words": [
+  "chronix",
+  "clientv",
+  "Deregistering",
+  "dgcg",
+  "flatline",
+  "gofiber",
+  "gorm",
+  "guentoan",
+  "mapstructure",
+  "memstore",
+  "mydb",
+  "mydevice",
+  "natefinch",
+  "notif",
+  "notifs",
+  "ONNX",
+  "rs",
+  "segmentio",
+  "shirokuma",
+  "sirupsen",
+  "soltix",
+  "sqlc",
+  "stretchr",
+  "testdb",
+  "unflushed",
+  "vnode",
+  "vnodes",
+  "zerolog",
+  "zlib"
+],
+"makefile.configureOnOpen": false
+}

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package wal.v1;
+
+option go_package = "github.com/soltixdb/soltix/proto/wal/v1;walv1";
+
+// EntryType represents the type of WAL entry
+enum EntryType {
+  ENTRY_TYPE_UNSPECIFIED = 0;
+  ENTRY_TYPE_WRITE = 1;
+  ENTRY_TYPE_DELETE = 2;
+}
+
+// Entry represents a single WAL entry
+// This is the Protobuf replacement for JSON-encoded WAL entries
+message Entry {
+  // Type of operation (write, delete)
+  EntryType type = 1;
+  
+  // Data identifiers
+  string database = 2;
+  string collection = 3;
+  string shard_id = 4;
+  
+  // Timestamp in RFC3339 format (for backward compatibility)
+  string time = 5;
+  
+  // Device/entity ID
+  string id = 6;
+  
+  // Field values (key-value pairs)
+  // Note: Protobuf map only supports scalar values
+  // We use double for numeric values, serialize other types as needed
+  map<string, FieldValue> fields = 7;
+  
+  // Entry timestamp (nanoseconds since epoch)
+  int64 timestamp = 8;
+}
+
+// FieldValue represents a field value with multiple type support
+// This allows storing different data types in the fields map
+message FieldValue {
+  oneof value {
+    double number_value = 1;
+    string string_value = 2;
+    bool bool_value = 3;
+    int64 int_value = 4;
+  }
+}

@@ -1,0 +1,79 @@
+server:
+  # http and grpc server configuration
+  http_port: 5555
+  grpc_port: 5556
+  # Bind address for servers (HTTP and gRPC)
+  host: 0.0.0.0
+  # grpc_host: Advertise address for service discovery
+  # In Docker, use container name or leave empty for auto-detection
+  grpc_host: "storage"
+
+storage:
+  # node identifier
+  node_id: storage-node-01
+  # Directories for data of storage engine
+  data_dir: /app/data
+  # Timezone for data storage and sharding
+  # Examples: "Asia/Tokyo", "+09:00", "UTC", "Local"
+  timezone: "UTC"
+  memory_store:
+    max_age: 24h # Duration to keep data in memory (data within this age is stored in memory)
+    max_size: 100000 # Max number of records in memory
+  flush:
+    interval: 5m # Flush to disk every 5 minutes (time-based trigger)
+    max_records: 50000 # Max record count before flush (count-based trigger, consistent with eviction)
+    max_wal_segments: 10 # Max WAL segments before flush (durability trigger)
+
+etcd:
+  # etcd configuration - use Docker service name
+  endpoints:
+    - http://etcd:2379
+  # Connection timeout
+  dial_timeout: 5s
+  # Optional authentication
+  username: ""
+  password: ""
+
+queue:
+  type: "nats"        # Options: nats (default), redis, kafka, memory
+
+  # Message queue (NATS) configuration - use Docker service name
+  url: nats://nats:4222
+  username: ""
+  password: ""
+  
+  # Redis-specific
+  redis_db: 0
+  redis_stream: "soltix"
+  redis_group: "consumers"
+  redis_consumer: "consumer-1"
+
+  # Kafka-specific  
+  kafka_brokers: ["kafka:9092"]
+  kafka_group_id: "soltix-consumers"
+
+coordinator:
+  hash_threshold: 20         # number of nodes to switch from rendezvous to consistent hash
+  vnode_count: 200           # number of virtual nodes per physical node
+  replica_factor: 3          # number of replicas for each shard
+  shard_key_format: "daily"  # format of shard key: "daily", "monthly"
+
+replication:
+  # number of replicas for each data shard
+  factor: 3
+  strategy: async
+  # minimum replicas required for read and write operations
+  min_replicas_for_write: 1
+
+logging:
+  # logging configuration
+  level: info # debug, info, warn, error
+  format: json # json or console
+  output_path: stdout # stdout, stderr, or file path
+  time_format: RFC3339
+
+auth:
+  enabled: true  # true = require API key, false = public access
+  api_keys:
+    - "e29771a2e3804fcb3068c159324a209e7ac9c4a707e31abeccf1bb0d8df0e6fd"
+    - "3a884590dc830a7a83d6e485f93aed0cf09da89a42982a9092718bfa89c62d15"

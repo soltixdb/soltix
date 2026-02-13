@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package storage.v1;
+
+option go_package = "github.com/soltixdb/soltix/proto/storage/v1;storagev1";
+
+// FieldValue represents a single field value with support for multiple types
+message FieldValue {
+  oneof value {
+    double number_value = 1;   // For numeric values (including floats)
+    string string_value = 2;   // For string values
+    bool bool_value = 3;       // For boolean values
+    int64 int_value = 4;       // For integer values
+  }
+}
+
+// FieldsEntry represents fields for a single data point in storage
+message FieldsEntry {
+  map<string, FieldValue> fields = 1;
+}
+
+// DeviceBlock represents a compressed block of data for a single device
+// Uses delta encoding for timestamps and protobuf for field data
+message DeviceBlock {
+  string device_id = 1;
+  uint32 entry_count = 2;
+  
+  // Delta-encoded timestamps
+  int64 base_time = 3;           // First timestamp (Unix nano)
+  repeated uint32 deltas = 4;    // Delta from previous timestamp (milliseconds)
+  
+  // Field data for each point (protobuf instead of JSON)
+  repeated FieldsEntry fields = 5;
+}
+
+// AggregatedFieldValue represents statistics for an aggregated field
+message AggregatedFieldValue {
+  int64 count = 1;          // Number of raw points
+  double sum = 2;           // Sum of values
+  double avg = 3;           // Average
+  double min = 4;           // Minimum
+  double max = 5;           // Maximum
+  double sum_squares = 6;   // For variance calculation (optional)
+}
+
+// AggregatedFieldsEntry represents aggregated fields for one time bucket
+message AggregatedFieldsEntry {
+  map<string, AggregatedFieldValue> fields = 1;
+  bool complete = 2;        // Is this bucket complete?
+}
+
+// AggregatedDeviceBlock represents aggregated data for a single device
+message AggregatedDeviceBlock {
+  string device_id = 1;
+  uint32 entry_count = 2;
+  
+  // Timestamps for each aggregate point (no delta encoding needed, fewer points)
+  repeated int64 timestamps = 3;  // UnixNano for each aggregate point
+  
+  // Aggregated field data
+  repeated AggregatedFieldsEntry fields = 4;
+  
+  // Metadata
+  string aggregation_level = 5;  // "1h", "1d", "1M", "1y"
+}
+
+// StorageService handles data storage and retrieval operations
+service StorageService {
+  // Query operations
+  rpc QueryShard(QueryShardRequest) returns (QueryShardResponse);
+  
+  // Streaming query - returns data in chunks for large datasets
+  rpc QueryShardStream(QueryShardStreamRequest) returns (stream QueryShardChunk);
+  
+  // Shard management
+  rpc GetShardInfo(GetShardInfoRequest) returns (GetShardInfoResponse);
+}
+
+// QueryShardRequest queries data from a specific shard
+message QueryShardRequest {
+  uint32 shard_id = 1;
+  string database = 2;
+  string collection = 3;
+  repeated string ids = 4;        // Device IDs to query (empty = all)
+  int64 start_time = 5;           // Unix timestamp in milliseconds
+  int64 end_time = 6;             // Unix timestamp in milliseconds
+  repeated string fields = 7;     // Fields to return (empty = all)
+  uint32 limit = 8;               // Max results per device
+  string interval = 9;            // Interval: 1m, 5m, 1h, 1d, 1mo, 1y (empty = raw)
+  string aggregation = 10;        // Aggregation: sum, avg, min, max (default: sum)
+}
+
+// QueryShardResponse returns query results
+message QueryShardResponse {
+  bool success = 1;
+  uint32 shard_id = 2;
+  repeated DataPointResult results = 3;
+  uint32 count = 4;
+  string error = 5;
+}
+
+// DataPointResult groups data points by device ID
+message DataPointResult {
+  string id = 1;
+  repeated DataPoint data_points = 2;
+}
+
+// DataPoint represents a single time-series data point
+message DataPoint {
+  int64 time = 1;                         // Unix timestamp in milliseconds
+  string id = 2;                          // Device ID
+  map<string, FieldValue> fields = 3;     // Field values (multi-type support)
+  int64 inserted_at = 4;                  // System timestamp
+}
+
+// GetShardInfoRequest requests shard metadata
+message GetShardInfoRequest {
+  uint32 shard_id = 1;
+}
+
+// GetShardInfoResponse returns shard metadata
+message GetShardInfoResponse {
+  uint32 shard_id = 1;
+  string node_id = 2;
+  string database = 3;
+  string collection = 4;
+  int64 start_time = 5;
+  int64 end_time = 6;
+  uint64 data_point_count = 7;
+  uint64 memory_usage_bytes = 8;
+  uint64 disk_usage_bytes = 9;
+  string status = 10;
+}
+
+// QueryShardStreamRequest for streaming queries
+message QueryShardStreamRequest {
+  uint32 shard_id = 1;
+  string database = 2;
+  string collection = 3;
+  repeated string ids = 4;        // Device IDs to query (empty = all)
+  int64 start_time = 5;           // Unix timestamp in milliseconds
+  int64 end_time = 6;             // Unix timestamp in milliseconds
+  repeated string fields = 7;     // Fields to return (empty = all)
+  string interval = 8;            // Interval: 1m, 5m, 1h, 1d, 1mo, 1y (empty = raw)
+  string aggregation = 9;         // Aggregation: sum, avg, min, max (default: sum)
+  uint32 chunk_size = 10;         // Number of data points per chunk (default: 1000)
+}
+
+// QueryShardChunk represents a chunk of streaming results
+message QueryShardChunk {
+  uint32 chunk_id = 1;            // Chunk sequence number (0-based)
+  uint32 shard_id = 2;            // Shard this chunk came from
+  repeated DataPointResult results = 3;  // Data points in this chunk
+  uint32 count = 4;               // Number of data points in this chunk
+  bool is_final = 5;              // True if this is the last chunk
+  string error = 6;               // Error message if any
+}

@@ -1,0 +1,74 @@
+server:
+  # http and grpc server configuration
+  http_port: 5555
+  grpc_port: 5556
+  # Bind address for servers (HTTP and gRPC)
+  host: 0.0.0.0
+  grpc_host: "localhost"
+
+storage:
+  # node identifier
+  node_id: storage-node-01
+  # Directories for data of storage engine
+  data_dir: /Users/nv.toan/toannv/projects/soltix/data
+  # Timezone for data storage
+  timezone: "Asia/Tokyo"
+  memory_store:
+    max_age: 2h
+    max_size: 100000
+  flush:
+    interval: 5m
+    max_records: 50000
+    max_wal_segments: 5
+  multipart:
+    max_rows_per_part: 10000
+    max_part_size: 67108864
+    min_rows_per_part: 1000
+  sync:
+    enabled: true
+    startup_sync: true
+    startup_timeout: 5m
+    sync_batch_size: 1000
+    max_concurrent_syncs: 5
+    anti_entropy:
+      enabled: true
+      interval: 1h
+      batch_size: 10000
+
+etcd:
+  endpoints:
+    - http://localhost:2379
+  dial_timeout: 5s
+
+queue:
+  type: "redis"        # Using Redis for queue
+
+  # Redis-specific
+  url: localhost:6379
+  redis_db: 0
+  redis_stream: "soltix"
+  redis_group: "soltix-group"
+  redis_consumer: "soltix-consumer-01"
+
+coordinator:
+  hash_threshold: 20
+  vnode_count: 200
+  replica_factor: 3
+  shard_key_format: "daily"
+
+replication:
+  factor: 3
+  strategy: async
+  min_replicas_for_write: 1
+
+logging:
+  level: debug
+  format: json
+  output: stdout
+  time_format: RFC3339
+
+auth:
+  enabled: false
+  api_keys:
+    - "e29771a2e3804fcb3068c159324a209e7ac9c4a707e31abeccf1bb0d8df0e6fd"
+    - "3a884590dc830a7a83d6e485f93aed0cf09da89a42982a9092718bfa89c62d15"

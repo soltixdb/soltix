@@ -1,0 +1,43 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Build output
+chronix
+soltix
+chronix-cli
+soltix-cli
+bin/
+
+.DS_Store
+
+__debug_bin*
+
+data/*
+cmd/services/storage/data/*
+
+*.log
+
+configs/config.yaml
+
+benchmark_results/
+
+.venv/
+test_data/
+
+__pycache__/

@@ -1,0 +1,141 @@
+services:
+  # NATS JetStream - Message Queue
+  nats:
+    image: nats:2.10-alpine
+    container_name: soltix-nats
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+      - "6222:6222"  # Cluster routing
+    command:
+      - "--js"                          # Enable JetStream
+      - "--sd=/data"                    # Store directory
+      - "--http_port=8222"              # Monitoring port
+      - "--name=nats-1"
+      - "--cluster_name=soltix-cluster"
+    volumes:
+      - nats-data:/data
+    networks:
+      - soltix-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # etcd - Service Discovery & Metadata
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.11
+    container_name: soltix-etcd
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    environment:
+      - ETCD_NAME=etcd1
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd:2380
+      - ETCD_INITIAL_CLUSTER=etcd1=http://etcd:2380
+      - ETCD_INITIAL_CLUSTER_TOKEN=soltix-cluster
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    volumes:
+      - etcd-data:/etcd-data
+    networks:
+      - soltix-net
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Router Service - API Gateway
+  router:
+    build:
+      context: .
+      dockerfile: Dockerfile.router
+      args:
+        VERSION: ${VERSION:-dev}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: soltix-router
+    ports:
+      - "5555:5555"  # HTTP API
+    environment:
+      - CONFIG_FILE=/app/configs/config.yaml
+    volumes:
+      - ./configs/config.yaml.docker:/app/configs/config.yaml:ro
+      - router-downloads:/app/data/downloads
+      - router-models:/app/data/models
+    networks:
+      - soltix-net
+    depends_on:
+      nats:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Storage Service - Data Storage Node
+  storage:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+      args:
+        VERSION: ${VERSION:-dev}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: soltix-storage
+    ports:
+      - "5556:5556"  # gRPC
+    environment:
+      - CONFIG_FILE=/app/configs/config.yaml
+    volumes:
+      - ./configs/config.yaml.docker:/app/configs/config.yaml:ro
+      - storage-data:/app/data
+    networks:
+      - soltix-net
+    depends_on:
+      nats:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ML Training Service - Python ML Model Training
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: soltix-ml-service
+    ports:
+      - "8000:8000"  # FastAPI
+    environment:
+      - ROUTER_URL=http://router:5555
+      - SOLTIX_API_URL=http://router:5555
+      - MODEL_PATH=/app/models
+      - CSV_DATA_PATH=/app/data/csv
+      - LOG_LEVEL=INFO
+    volumes:
+      - ml-models:/app/models
+      - ml-csv-data:/app/data/csv
+    networks:
+      - soltix-net
+    depends_on:
+      - router
+    restart: unless-stopped
+
+volumes:
+  nats-data:
+  etcd-data:
+  storage-data:
+  ml-models:
+  ml-csv-data:
+  router-downloads:
+  router-models:
+
+networks:
+  soltix-net:
+    driver: bridge

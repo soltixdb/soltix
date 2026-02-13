@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Router Service",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/services/router/main.go",
+            "args": ["-config", "${workspaceFolder}/configs/config.yaml"]
+        },
+        {
+            "name": "Launch Storage Service",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/services/storage/main.go",
+            "args": ["-config", "${workspaceFolder}/configs/config.yaml"]
+        },
+        {
+            "name": "Launch Current File",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${file}"
+        },
+        {
+            "name": "Launch Test Package",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}"
+        },
+        {
+            "name": "Launch Test File",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${file}"
+        }
+    ]
+}
