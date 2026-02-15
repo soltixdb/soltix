@@ -38,37 +38,31 @@ go run cmd/tools/bin_to_csv/main.go [flags]
 | `-collection` | Collection name | `plant_power` | No |
 | `-interval` | Time interval: `raw`, `1h`, `1d`, `1mo` (or `1m`), `1y` | `raw` | No |
 | `-date` | Date to export (format: yyyymmdd) | - | **Yes** |
-| `-data-dir` | Base data directory | `./data/data` | No |
+| `-data-dir` | Base raw data directory | `./data/data` | No |
+| `-agg-dir` | Base aggregated data directory | `./data/agg` | No |
 | `-output` | Output directory for CSV | `./data/csv` | No |
 | `-timezone` | Timezone for conversion | `Asia/Tokyo` | No |
+| `-device` | Filter by device ID | - | No |
 
 ### File Path Structure
 
 The tool automatically determines the file path based on interval:
 
-**Raw data:**
+**Raw data (TieredStorage, group-aware):**
 ```
-{data-dir}/{database}/{collection}/{yyyy}/{mm}/{yyyymmdd}.bin
-```
-
-**Hourly aggregation:**
-```
-{data-dir}/agg_1h/{database}/{collection}/{yyyy}/{mm}/{yyyymmdd}.bin
+{data-dir}/group_XXXX/{database}/{collection}/{yyyy}/{mm}/{yyyymmdd}/dg_XXXX/part_XXXX.bin
 ```
 
-**Daily aggregation:**
-```
-{data-dir}/agg_1d/{database}/{collection}/{yyyy}/{yyyymm}.bin
-```
+The tool auto-discovers all `group_XXXX` directories and queries across them.
 
-**Monthly aggregation:**
+**Aggregated data (V6 columnar):**
 ```
-{data-dir}/agg_1M/{database}/{collection}/{yyyy}.bin
-```
+{agg-dir}/agg_1h/{db}/{collection}/{yyyy}/{mm}/{dd}/_metadata.idx
+{agg-dir}/agg_1h/{db}/{collection}/{yyyy}/{mm}/{dd}/dg_0000/part_0000.bin
 
-**Yearly aggregation:**
-```
-{data-dir}/agg_1y/{database}/{collection}/all.bin
+{agg-dir}/agg_1d/{db}/{collection}/{yyyy}/{mm}/_metadata.idx
+{agg-dir}/agg_1M/{db}/{collection}/{yyyy}/_metadata.idx
+{agg-dir}/agg_1y/{db}/{collection}/_metadata.idx
 ```
 
 ## Examples
@@ -132,7 +126,18 @@ go run cmd/tools/bin_to_csv/main.go \
   -timezone "America/New_York"
 ```
 
-### 5. Custom data directory and output path
+### 5. Filter by device ID
+
+```bash
+go run cmd/tools/bin_to_csv/main.go \
+  -database shirokuma \
+  -collection plant_power \
+  -interval raw \
+  -date 20260113 \
+  -device "device-001"
+```
+
+### 6. Custom data directory and output path
 
 ```bash
 go run cmd/tools/bin_to_csv/main.go \
@@ -164,11 +169,12 @@ Each field has 5 statistic columns:
 
 ## Error Handling
 
-### File not found
+### No groups found
 ```bash
-Error: File not found: ./data/data/shirokuma/plant_power/2026/01/20260113.bin
+Discovered 0 groups in ./data/data
+Warning: No data points found
 ```
-→ Check the data-dir path and ensure the file exists
+→ Check that `--data-dir` points to the directory containing `group_XXXX` folders
 
 ### Invalid date format
 ```bash
@@ -224,42 +230,44 @@ go run cmd/tools/bin_to_csv/main.go -interval raw -date 20260113 -timezone "UTC"
 
 ## Technical Details
 
-### Binary Format
+### Storage Architecture
 
-The tool supports reading Soltix binary format:
+The tool uses the V6 3-tier storage architecture:
 
-1. **File Header** (256 bytes):
-   - Magic number: `0x534F4C54` ("SOLT")
-   - Index offset and size
-   - Other metadata
+1. **Tier 1 — Group** (`group_XXXX/`):
+   - Devices are hash-assigned to groups: `hash(db, collection, device_id) % TotalGroups`
+   - TieredStorage auto-discovers all groups on disk
 
-2. **Device Blocks** (compressed):
-   - Device ID
-   - Timestamps (base + deltas)
-   - Field values (protobuf)
+2. **Tier 2 — Device Group** (`dg_XXXX/`):
+   - Within each date directory, devices are batched (max 50 per DG)
 
-3. **Index** (end of file):
-   - Device ID → block offset/size mapping
-   - Compressed with Snappy
+3. **Tier 3 — Partition** (`part_XXXX.bin`):
+   - V6 columnar format with Snappy compression
+   - Magic number: `0x56364447` ("V6DG")
+   - Footer-based column index for efficient reads
 
-### Protobuf Schemas
+### Aggregation Format
 
-- Raw data: `DeviceBlock` (proto/storage/v1)
-- Aggregated data: `AggregatedDeviceBlock` (proto/storage/v1)
+- V6 columnar format with magic `0x41474750` ("AGGP")
+- Metrics per column: sum, avg, min, max, count
+- Organized by level: `agg_1h`, `agg_1d`, `agg_1M`, `agg_1y`
 
 ## Troubleshooting
+
+**Q: "Discovered 0 groups" — no data found?**  
+A: Make sure `--data-dir` points to the directory that contains `group_XXXX/` folders
 
 **Q: CSV file too large?**  
 A: Use aggregated interval (`1h`, `1d`) instead of raw to reduce size
 
 **Q: Timestamp in wrong timezone?**  
-A: Check `-timezone` flag, default is `Asia/Tokyo`
+A: Check `-timezone` flag, default is `Asia/Tokyo`. Use `-timezone UTC` if data was stored in UTC
 
-**Q: Some fields missing in CSV?**  
-A: Fields starting with `_` (system metadata) are automatically skipped
+**Q: Data stored in UTC but I want JST output?**  
+A: Use `-timezone Asia/Tokyo` — timestamps will be converted automatically
 
-**Q: Performance slow with large files?**  
-A: Tool loads entire file into memory, files >1GB may need optimization
+**Q: How to export a specific device only?**  
+A: Use `-device "device-001"` to filter by device ID
 
 ## Related
 
