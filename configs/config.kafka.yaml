@@ -10,7 +10,7 @@ storage:
   # node identifier
   node_id: storage-node-01
   # Directories for data of storage engine
-  data_dir: /Users/nv.toan/toannv/projects/soltix/data
+  data_dir: ./data
   # Timezone for data storage
   timezone: "Asia/Tokyo"
   memory_store:
