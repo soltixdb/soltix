@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/csv"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -12,11 +10,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/soltixdb/soltix/internal/compression"
+	"github.com/soltixdb/soltix/internal/aggregation"
 	"github.com/soltixdb/soltix/internal/logging"
 	"github.com/soltixdb/soltix/internal/storage"
-	pb "github.com/soltixdb/soltix/proto/storage/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -25,7 +21,8 @@ func main() {
 	collection := flag.String("collection", "plant_power", "Collection name")
 	interval := flag.String("interval", "raw", "Aggregation interval (raw, 1h, 1d, 1mo, 1y)")
 	date := flag.String("date", "", "Date in yyyymmdd format")
-	dataDir := flag.String("data-dir", "./data/data", "Base data directory")
+	dataDir := flag.String("data-dir", "./data/data", "Base raw data directory")
+	aggDir := flag.String("agg-dir", "./data/agg", "Base aggregated data directory")
 	output := flag.String("output", "./data/csv", "Output CSV directory")
 	timezone := flag.String("timezone", "Asia/Tokyo", "Timezone for timestamp conversion")
 	deviceID := flag.String("device", "", "Filter by device ID (optional)")
@@ -57,7 +54,7 @@ func main() {
 		points, err = readStorageData(*dataDir, *database, *collection, parsedDate, loc, *deviceID)
 	} else {
 		// Aggregated data still uses old format
-		points, err = readAggregateData(*dataDir, *database, *collection, *interval, parsedDate, loc)
+		points, err = readAggregateData(*aggDir, *database, *collection, *interval, parsedDate, loc, *deviceID)
 	}
 
 	if err != nil {
@@ -87,13 +84,15 @@ func main() {
 	fmt.Printf("Successfully exported to: %s\n", outputFile)
 }
 
-// readStorageData reads raw data using V3 Columnar storage
+// readStorageData reads raw data using TieredStorage (group-aware)
+// Directory layout: {dataDir}/group_XXXX/{db}/{collection}/yyyy/mm/yyyymmdd/dg_XXXX/*.bin
 func readStorageData(dataDir, database, collection string, date time.Time, timezone *time.Location, deviceFilter string) ([]DataPoint, error) {
 	logger := logging.NewDevelopment()
 
-	// Initialize Columnar storage
-	columnarStorage := storage.NewStorage(dataDir, compression.Snappy, logger)
-	columnarStorage.SetTimezone(timezone)
+	// Initialize TieredStorage — auto-discovers group_XXXX directories
+	config := storage.DefaultGroupStorageConfig(dataDir)
+	config.Timezone = timezone
+	tieredStorage := storage.NewTieredStorage(config, logger)
 
 	// Query for the entire day
 	startTime := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, timezone)
@@ -105,10 +104,13 @@ func readStorageData(dataDir, database, collection string, date time.Time, timez
 		deviceIDs = []string{deviceFilter}
 	}
 
-	fmt.Printf("Querying Columnar data: %s/%s from %s to %s\n", database, collection, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+	// List discovered groups for logging
+	groupIDs, _ := tieredStorage.ListGroupIDs()
+	fmt.Printf("Discovered %d groups in %s\n", len(groupIDs), dataDir)
+	fmt.Printf("Querying TieredStorage: %s/%s from %s to %s\n", database, collection, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 
-	// Query data
-	storagePoints, err := columnarStorage.Query(database, collection, deviceIDs, startTime, endTime, nil)
+	// Query data across all groups
+	storagePoints, err := tieredStorage.Query(database, collection, deviceIDs, startTime, endTime, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query storage: %w", err)
 	}
@@ -138,153 +140,85 @@ func readStorageData(dataDir, database, collection string, date time.Time, timez
 }
 
 // readAggregateData reads aggregated data (still uses old format)
-func readAggregateData(dataDir, database, collection, interval string, date time.Time, timezone *time.Location) ([]DataPoint, error) {
-	// Construct file path based on interval
-	year := date.Format("2006")
-	month := date.Format("01")
-	yearMonth := date.Format("200601")
-	dateStr := date.Format("20060102")
+func readAggregateData(aggDir, database, collection, interval string, date time.Time, timezone *time.Location, deviceFilter string) ([]DataPoint, error) {
+	logger := logging.NewDevelopment()
+	aggStorage := aggregation.NewStorage(aggDir, logger)
+	aggStorage.SetTimezone(timezone)
 
-	var filePath string
+	var level aggregation.AggregationLevel
+	var startTime, endTime time.Time
+
 	switch interval {
 	case "1h":
-		filePath = filepath.Join(dataDir, "agg_1h", database, collection, year, month, dateStr+".bin")
+		level = aggregation.AggregationHourly
+		startTime = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, timezone)
+		endTime = startTime.Add(24 * time.Hour)
 	case "1d":
-		filePath = filepath.Join(dataDir, "agg_1d", database, collection, year, yearMonth+".bin")
+		level = aggregation.AggregationDaily
+		startTime = time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, timezone)
+		endTime = startTime.AddDate(0, 1, 0)
 	case "1mo", "1m":
-		filePath = filepath.Join(dataDir, "agg_1M", database, collection, year+".bin")
+		level = aggregation.AggregationMonthly
+		startTime = time.Date(date.Year(), time.January, 1, 0, 0, 0, 0, timezone)
+		endTime = startTime.AddDate(1, 0, 0)
 	case "1y":
-		filePath = filepath.Join(dataDir, "agg_1y", database, collection, "all.bin")
+		level = aggregation.AggregationYearly
+		startTime = time.Date(date.Year(), time.January, 1, 0, 0, 0, 0, timezone)
+		endTime = startTime.AddDate(1, 0, 0)
 	default:
 		return nil, fmt.Errorf("invalid interval '%s'. Valid options: raw, 1h, 1d, 1mo (or 1m), 1y", interval)
 	}
 
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("file not found: %s", filePath)
+	var deviceIDs []string
+	if deviceFilter != "" {
+		deviceIDs = []string{deviceFilter}
 	}
 
-	fmt.Printf("Reading aggregate file: %s\n", filePath)
-	return readAggregateFile(filePath, timezone)
-}
+	opts := aggregation.ReadOptions{
+		StartTime: startTime,
+		EndTime:   endTime,
+		DeviceIDs: deviceIDs,
+	}
 
-// readAggregateFile reads and decompresses an aggregate bin file
-func readAggregateFile(filePath string, timezone *time.Location) ([]DataPoint, error) {
-	file, err := os.Open(filePath)
+	aggPoints, err := aggStorage.ReadAggregatedPoints(level, database, collection, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	// Read header (256 bytes)
-	headerBytes := make([]byte, 256)
-	if _, err := file.Read(headerBytes); err != nil {
-		return nil, fmt.Errorf("failed to read header: %w", err)
+		return nil, fmt.Errorf("failed to read aggregated data: %w", err)
 	}
 
-	// Parse header
-	header := parseAggFileHeader(headerBytes)
-
-	// Validate magic (AggFileMagic = 0x53585441 "ATXS")
-	if header.Magic != 0x53585441 {
-		return nil, fmt.Errorf("invalid magic number: 0x%X (expected 0x53585441)", header.Magic)
-	}
-
-	// Read index at the end of file
-	if _, err := file.Seek(header.IndexOffset, 0); err != nil {
-		return nil, fmt.Errorf("failed to seek to index: %w", err)
-	}
-
-	// Read index size
-	var indexSize uint32
-	if err := binary.Read(file, binary.LittleEndian, &indexSize); err != nil {
-		return nil, fmt.Errorf("failed to read index size: %w", err)
-	}
-
-	// Read compressed index data
-	indexData := make([]byte, indexSize)
-	if _, err := file.Read(indexData); err != nil {
-		return nil, fmt.Errorf("failed to read index: %w", err)
-	}
-
-	// Decompress index
-	compressor := compression.NewSnappyCompressor()
-	decompressedIndex, err := compressor.Decompress(indexData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decompress index: %w", err)
-	}
-
-	// Parse index as JSON
-	var fileIndex storage.FileIndex
-	if err := json.Unmarshal(decompressedIndex, &fileIndex); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal index: %w", err)
-	}
-
-	// Read all device blocks
-	var allPoints []DataPoint
-
-	for _, entry := range fileIndex.DeviceEntries {
-		if _, err := file.Seek(entry.BlockOffset, 0); err != nil {
-			return nil, fmt.Errorf("failed to seek to block: %w", err)
+	points := make([]DataPoint, 0, len(aggPoints))
+	for _, ap := range aggPoints {
+		point := DataPoint{
+			Timestamp: ap.Time.In(timezone),
+			ID:        ap.DeviceID,
+			Values:    make(map[string]interface{}),
 		}
 
-		compressed := make([]byte, entry.BlockSize)
-		if _, err := file.Read(compressed); err != nil {
-			return nil, fmt.Errorf("failed to read block: %w", err)
-		}
-
-		decompressed, err := compressor.Decompress(compressed)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decompress block: %w", err)
-		}
-
-		var aggBlock pb.AggregatedDeviceBlock
-		if err := proto.Unmarshal(decompressed, &aggBlock); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
-		}
-
-		for i := 0; i < len(aggBlock.Timestamps); i++ {
-			timestamp := time.Unix(0, aggBlock.Timestamps[i]).In(timezone)
-
-			point := DataPoint{
-				Timestamp: timestamp,
-				ID:        aggBlock.DeviceId,
-				Values:    make(map[string]interface{}),
+		for fieldName, fieldValue := range ap.Fields {
+			if fieldValue == nil {
+				continue
 			}
-
-			if i < len(aggBlock.Fields) {
-				fieldsEntry := aggBlock.Fields[i]
-				for fieldName, fieldValue := range fieldsEntry.Fields {
-					fieldStats := make(map[string]interface{})
-					fieldStats["count"] = fieldValue.Count
-					fieldStats["sum"] = fieldValue.Sum
-					fieldStats["min"] = fieldValue.Min
-					fieldStats["max"] = fieldValue.Max
-					fieldStats["avg"] = fieldValue.Avg
-					point.Values[fieldName] = fieldStats
-				}
+			fieldStats := map[string]interface{}{
+				"count": fieldValue.Count,
+				"sum":   fieldValue.Sum,
+				"min":   fieldValue.Min,
+				"max":   fieldValue.Max,
+				"avg":   fieldValue.Avg,
 			}
-
-			allPoints = append(allPoints, point)
+			point.Values[fieldName] = fieldStats
 		}
+
+		points = append(points, point)
 	}
 
-	return allPoints, nil
-}
+	// Sort by timestamp
+	sort.Slice(points, func(i, j int) bool {
+		if points[i].Timestamp.Equal(points[j].Timestamp) {
+			return points[i].ID < points[j].ID
+		}
+		return points[i].Timestamp.Before(points[j].Timestamp)
+	})
 
-// AggFileHeader represents the header of an aggregate file
-type AggFileHeader struct {
-	Magic       uint32
-	IndexOffset int64
-	IndexSize   uint32
-}
-
-func parseAggFileHeader(data []byte) AggFileHeader {
-	return AggFileHeader{
-		Magic:       binary.LittleEndian.Uint32(data[0:4]),
-		IndexOffset: int64(binary.LittleEndian.Uint64(data[36:44])),
-		IndexSize:   binary.LittleEndian.Uint32(data[44:48]),
-	}
+	return points, nil
 }
 
 // DataPoint represents a single data point
