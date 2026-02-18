@@ -841,8 +841,8 @@ func TestColumnarData_AddRowAllMetrics(t *testing.T) {
 	if len(cd.FloatColumns) != 4 { // sum, avg, min, max
 		t.Errorf("FloatColumns = %d, want 4", len(cd.FloatColumns))
 	}
-	if len(cd.IntColumns) != 1 { // count
-		t.Errorf("IntColumns = %d, want 1", len(cd.IntColumns))
+	if len(cd.IntColumns) != 3 { // count, min_time, max_time
+		t.Errorf("IntColumns = %d, want 3", len(cd.IntColumns))
 	}
 }
 
@@ -856,12 +856,12 @@ func TestColumnarData_MultipleFields(t *testing.T) {
 
 	cd.AddRowAllMetrics(1000, "dev1", fields)
 
-	// Should have 8 float columns (4 metrics * 2 fields) and 2 int columns
+	// Should have 8 float columns (4 metrics * 2 fields) and 6 int columns (3 metrics * 2 fields)
 	if len(cd.FloatColumns) != 8 {
 		t.Errorf("FloatColumns = %d, want 8", len(cd.FloatColumns))
 	}
-	if len(cd.IntColumns) != 2 {
-		t.Errorf("IntColumns = %d, want 2", len(cd.IntColumns))
+	if len(cd.IntColumns) != 6 {
+		t.Errorf("IntColumns = %d, want 6", len(cd.IntColumns))
 	}
 }
 
