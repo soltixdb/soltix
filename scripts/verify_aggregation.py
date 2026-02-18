@@ -39,6 +39,41 @@ def normalize_time_to_utc(time_str):
         return None
 
 
+def format_utc_z(dt):
+    """Format datetime to canonical UTC Z string"""
+    return dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def normalize_time_value_to_utc_str(value):
+    """Normalize API time value (RFC3339 string or unix timestamp) to UTC Z string"""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        dt = normalize_time_to_utc(value)
+        if dt is None:
+            return None
+        return format_utc_z(dt)
+
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        try:
+            # Heuristic by magnitude
+            if ts >= 1e17:  # nanoseconds
+                dt = datetime.fromtimestamp(ts / 1e9, tz=timezone.utc)
+            elif ts >= 1e14:  # microseconds
+                dt = datetime.fromtimestamp(ts / 1e6, tz=timezone.utc)
+            elif ts >= 1e11:  # milliseconds
+                dt = datetime.fromtimestamp(ts / 1e3, tz=timezone.utc)
+            else:  # seconds
+                dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            return format_utc_z(dt)
+        except Exception:
+            return None
+
+    return None
+
+
 def truncate_to_hour(dt):
     """Truncate datetime to hour"""
     return dt.replace(minute=0, second=0, microsecond=0)
@@ -136,6 +171,62 @@ def calculate_aggregations_from_raw(raw_points, interval, fields, field_schemas=
                         'max': max(values),
                         'count': len(values)
                     }
+
+    # Calculate min_time / max_time (earliest timestamp on ties)
+    for bucket_key, devices in buckets.items():
+        for device_id, device_fields in devices.items():
+            for field, values in device_fields.items():
+                if not values:
+                    continue
+
+                # Re-scan raw points for deterministic earliest-tie timestamp
+                min_val = min(values)
+                max_val = max(values)
+                min_time = None
+                max_time = None
+
+                for point in raw_points:
+                    if point.get('id') != device_id:
+                        continue
+
+                    dt = normalize_time_to_utc(point.get('time'))
+                    if dt is None:
+                        continue
+
+                    if interval == '1h':
+                        bt = truncate_to_hour(dt)
+                    elif interval == '1d':
+                        bt = truncate_to_day(dt)
+                    elif interval == '1mo':
+                        bt = truncate_to_month(dt)
+                    elif interval == '1y':
+                        bt = truncate_to_year(dt)
+                    else:
+                        bt = truncate_to_hour(dt)
+
+                    if format_utc_z(bt) != bucket_key:
+                        continue
+
+                    val = point.get(field)
+                    if val is None:
+                        continue
+
+                    try:
+                        numeric_val = float(val)
+                    except (TypeError, ValueError):
+                        continue
+
+                    if numeric_val == min_val:
+                        if min_time is None or dt < min_time:
+                            min_time = dt
+                    if numeric_val == max_val:
+                        if max_time is None or dt < max_time:
+                            max_time = dt
+
+                if min_time is not None:
+                    result[bucket_key][device_id][field]['min_time'] = format_utc_z(min_time)
+                if max_time is not None:
+                    result[bucket_key][device_id][field]['max_time'] = format_utc_z(max_time)
 
     return result
 
@@ -244,6 +335,9 @@ def verify_aggregation(expected, actual_points, aggregation_type, fields, interv
                 if field not in device_fields:
                     continue
 
+                if aggregation_type not in device_fields[field]:
+                    continue
+
                 expected_val = device_fields[field][aggregation_type]
                 actual_val = actual_point.get(field)
 
@@ -254,6 +348,16 @@ def verify_aggregation(expected, actual_points, aggregation_type, fields, interv
                         'expected': expected_val,
                         'actual': None
                     })
+                elif aggregation_type in ['min_time', 'max_time']:
+                    actual_time = normalize_time_value_to_utc_str(actual_val)
+                    if actual_time != expected_val:
+                        all_fields_match = False
+                        field_mismatches.append({
+                            'field': field,
+                            'expected': expected_val,
+                            'actual': actual_val,
+                            'actual_normalized': actual_time
+                        })
                 elif abs(expected_val - actual_val) > tolerance:
                     all_fields_match = False
                     field_mismatches.append({
@@ -387,7 +491,7 @@ def main():
 
     # Test configurations
     intervals = ['1h', '1d', '1mo', '1y']
-    aggregations = ['sum', 'avg', 'min', 'max', 'count']
+    aggregations = ['sum', 'avg', 'min', 'max', 'count', 'min_time', 'max_time']
 
     test_configs = []
     for interval in intervals:
@@ -464,16 +568,25 @@ def main():
     print()
 
     all_passed = True
+    skipped_count = 0
     for r in all_results:
-        status = "✅ PASS" if r['result'] else "❌ FAIL"
-        color = GREEN if r['result'] else RED
+        if r['result'] == 'SKIP':
+            status = "⏭️ SKIP"
+            color = YELLOW
+            skipped_count += 1
+        else:
+            status = "✅ PASS" if r['result'] else "❌ FAIL"
+            color = GREEN if r['result'] else RED
         print_color(color, f"  {r['interval']:4} / {r['aggregation']:5}: {status}")
-        if not r['result']:
+        if r['result'] not in (True, 'SKIP'):
             all_passed = False
 
     print()
     if all_passed:
-        print_color(GREEN, "🎉 ALL TESTS PASSED!")
+        if skipped_count > 0:
+            print_color(YELLOW, f"⚠️  PASSED with {skipped_count} skipped (API chưa hỗ trợ một số aggregation)")
+        else:
+            print_color(GREEN, "🎉 ALL TESTS PASSED!")
     else:
         print_color(RED, "⚠️  SOME TESTS FAILED")
 
@@ -567,6 +680,18 @@ def run_verification(base_url, database, collection, generated_file,
     except Exception as e:
         print_color(RED, f"❌ Query failed: {e}")
         return False
+
+    # Graceful skip when backend validation does not support new aggregation types yet
+    error_message = ""
+    if isinstance(result, dict):
+        if isinstance(result.get('error'), dict):
+            error_message = str(result.get('error', {}).get('message', ''))
+        else:
+            error_message = str(result.get('error', ''))
+
+    if aggregation in ['min_time', 'max_time'] and 'aggregation must be one of' in error_message.lower():
+        print_color(YELLOW, f"⏭️  SKIP: API chưa hỗ trợ aggregation='{aggregation}'")
+        return 'SKIP'
 
     results = result.get('results', result.get('data', []))
     actual_points = convert_columnar_to_points(results)

@@ -39,16 +39,18 @@ import (
 type MetricType string
 
 const (
-	MetricSum   MetricType = "sum"
-	MetricAvg   MetricType = "avg"
-	MetricMin   MetricType = "min"
-	MetricMax   MetricType = "max"
-	MetricCount MetricType = "count"
+	MetricSum     MetricType = "sum"
+	MetricAvg     MetricType = "avg"
+	MetricMin     MetricType = "min"
+	MetricMax     MetricType = "max"
+	MetricCount   MetricType = "count"
+	MetricMinTime MetricType = "min_time"
+	MetricMaxTime MetricType = "max_time"
 )
 
 // AllMetricTypes returns all metric types
 func AllMetricTypes() []MetricType {
-	return []MetricType{MetricSum, MetricAvg, MetricMin, MetricMax, MetricCount}
+	return []MetricType{MetricSum, MetricAvg, MetricMin, MetricMax, MetricCount, MetricMinTime, MetricMaxTime}
 }
 
 // MetricTypeToIndex converts a MetricType to a uint8 index for binary encoding
@@ -64,6 +66,10 @@ func MetricTypeToIndex(m MetricType) uint8 {
 		return 3
 	case MetricCount:
 		return 4
+	case MetricMinTime:
+		return 5
+	case MetricMaxTime:
+		return 6
 	default:
 		return 0
 	}
@@ -82,6 +88,10 @@ func MetricTypeFromIndex(idx uint8) MetricType {
 		return MetricMax
 	case 4:
 		return MetricCount
+	case 5:
+		return MetricMinTime
+	case 6:
+		return MetricMaxTime
 	default:
 		return MetricSum
 	}
@@ -520,7 +530,7 @@ type ColumnarData struct {
 
 	// Per-field, per-metric: field_name -> values
 	// FloatColumns keys: "sum\x00fieldName", "avg\x00fieldName", etc.
-	// IntColumns keys: "count\x00fieldName"
+	// IntColumns keys: "count\x00fieldName", "min_time\x00fieldName", "max_time\x00fieldName"
 	FloatColumns map[string][]float64
 	IntColumns   map[string][]int64
 }
@@ -531,8 +541,12 @@ func v6FloatKey(metric MetricType, fieldName string) string {
 	return string(metric) + "\x00" + fieldName
 }
 
+func v6IntMetricKey(metric MetricType, fieldName string) string {
+	return string(metric) + "\x00" + fieldName
+}
+
 func v6IntKey(fieldName string) string {
-	return "count\x00" + fieldName
+	return v6IntMetricKey(MetricCount, fieldName)
 }
 
 func v6ParseFloatKey(key string) (MetricType, string) {
@@ -544,13 +558,17 @@ func v6ParseFloatKey(key string) (MetricType, string) {
 	return "", key
 }
 
-func v6ParseIntKey(key string) string {
+func v6ParseIntKey(key string) (MetricType, string) {
 	for i := 0; i < len(key); i++ {
 		if key[i] == 0 {
-			return key[i+1:]
+			metric := MetricType(key[:i])
+			if metric == "" {
+				metric = MetricCount
+			}
+			return metric, key[i+1:]
 		}
 	}
-	return key
+	return MetricCount, key
 }
 
 // NewColumnarData creates a new columnar data container
@@ -583,6 +601,12 @@ func (cd *ColumnarData) AddRowAllMetrics(timestamp int64, deviceID string, field
 
 		countKey := v6IntKey(fieldName)
 		cd.IntColumns[countKey] = append(cd.IntColumns[countKey], field.Count)
+
+		minTimeKey := v6IntMetricKey(MetricMinTime, fieldName)
+		cd.IntColumns[minTimeKey] = append(cd.IntColumns[minTimeKey], field.MinTime)
+
+		maxTimeKey := v6IntMetricKey(MetricMaxTime, fieldName)
+		cd.IntColumns[maxTimeKey] = append(cd.IntColumns[maxTimeKey], field.MaxTime)
 	}
 }
 
@@ -668,7 +692,7 @@ func (s *Storage) writeV6PartFile(partDir string, partNum int, level Aggregation
 		}
 	}
 	for key := range data.IntColumns {
-		fieldName := v6ParseIntKey(key)
+		_, fieldName := v6ParseIntKey(key)
 		if fieldName != "" {
 			fieldSet[fieldName] = struct{}{}
 		}
@@ -791,9 +815,9 @@ func (s *Storage) writeV6PartFile(partDir string, partNum int, level Aggregation
 				currentOffset += int64(len(comp))
 			}
 
-			// Int metric: count
-			{
-				key := v6IntKey(fieldName)
+			// Int metrics: count, min_time, max_time
+			for _, metric := range []MetricType{MetricCount, MetricMinTime, MetricMaxTime} {
+				key := v6IntMetricKey(metric, fieldName)
 				allValues := data.IntColumns[key]
 				if len(allValues) == 0 {
 					continue
@@ -813,7 +837,7 @@ func (s *Storage) writeV6PartFile(partDir string, partNum int, level Aggregation
 				encoded, encErr := s.deltaEncoder.Encode(ifaces)
 				if encErr != nil {
 					writeErr = encErr
-					return nil, fmt.Errorf("failed to encode int column count/%s: %w", fieldName, encErr)
+					return nil, fmt.Errorf("failed to encode int column %s/%s: %w", metric, fieldName, encErr)
 				}
 				comp, compErr := s.compressor.Compress(encoded)
 				if compErr != nil {
@@ -827,7 +851,7 @@ func (s *Storage) writeV6PartFile(partDir string, partNum int, level Aggregation
 				columns = append(columns, V6AggColumnEntry{
 					DeviceIdx:  uint32(devIdx),
 					FieldIdx:   fieldIdx,
-					MetricIdx:  MetricTypeToIndex(MetricCount),
+					MetricIdx:  MetricTypeToIndex(metric),
 					Offset:     currentOffset,
 					Size:       uint32(len(comp)),
 					RowCount:   rowCount,
@@ -1192,7 +1216,7 @@ func (s *Storage) readV6PartFileData(
 				return nil, fmt.Errorf("failed to decode int column: %w", decErr)
 			}
 
-			key := v6IntKey(fieldName)
+			key := v6IntMetricKey(metric, fieldName)
 			if _, exists := result.IntColumns[key]; !exists {
 				result.IntColumns[key] = make([]int64, totalRows)
 			}

@@ -310,6 +310,8 @@ func TestMetricTypeToIndex(t *testing.T) {
 		{MetricMin, 2},
 		{MetricMax, 3},
 		{MetricCount, 4},
+		{MetricMinTime, 5},
+		{MetricMaxTime, 6},
 		{MetricType("unknown"), 0}, // default
 		{MetricType(""), 0},        // empty
 	}
@@ -331,7 +333,8 @@ func TestMetricTypeFromIndex(t *testing.T) {
 		{2, MetricMin},
 		{3, MetricMax},
 		{4, MetricCount},
-		{5, MetricSum},   // unknown defaults to sum
+		{5, MetricMinTime},
+		{6, MetricMaxTime},
 		{255, MetricSum}, // out of range
 	}
 	for _, tt := range tests {
@@ -366,7 +369,10 @@ func TestV6FloatKey(t *testing.T) {
 
 func TestV6IntKey(t *testing.T) {
 	key := v6IntKey("temperature")
-	field := v6ParseIntKey(key)
+	metric, field := v6ParseIntKey(key)
+	if metric != MetricCount {
+		t.Errorf("v6IntKey roundtrip metric: got %q", metric)
+	}
 	if field != "temperature" {
 		t.Errorf("v6IntKey roundtrip: got field=%q", field)
 	}
@@ -381,7 +387,10 @@ func TestV6ParseFloatKey_NoSeparator(t *testing.T) {
 }
 
 func TestV6ParseIntKey_NoSeparator(t *testing.T) {
-	field := v6ParseIntKey("noseparator")
+	metric, field := v6ParseIntKey("noseparator")
+	if metric != MetricCount {
+		t.Errorf("v6ParseIntKey no separator metric: %q", metric)
+	}
 	if field != "noseparator" {
 		t.Errorf("v6ParseIntKey no separator: field=%q", field)
 	}
@@ -832,8 +841,8 @@ func TestColumnarData_AddRowAllMetrics(t *testing.T) {
 	if len(cd.FloatColumns) != 4 { // sum, avg, min, max
 		t.Errorf("FloatColumns = %d, want 4", len(cd.FloatColumns))
 	}
-	if len(cd.IntColumns) != 1 { // count
-		t.Errorf("IntColumns = %d, want 1", len(cd.IntColumns))
+	if len(cd.IntColumns) != 3 { // count, min_time, max_time
+		t.Errorf("IntColumns = %d, want 3", len(cd.IntColumns))
 	}
 }
 
@@ -847,12 +856,12 @@ func TestColumnarData_MultipleFields(t *testing.T) {
 
 	cd.AddRowAllMetrics(1000, "dev1", fields)
 
-	// Should have 8 float columns (4 metrics * 2 fields) and 2 int columns
+	// Should have 8 float columns (4 metrics * 2 fields) and 6 int columns (3 metrics * 2 fields)
 	if len(cd.FloatColumns) != 8 {
 		t.Errorf("FloatColumns = %d, want 8", len(cd.FloatColumns))
 	}
-	if len(cd.IntColumns) != 2 {
-		t.Errorf("IntColumns = %d, want 2", len(cd.IntColumns))
+	if len(cd.IntColumns) != 6 {
+		t.Errorf("IntColumns = %d, want 6", len(cd.IntColumns))
 	}
 }
 

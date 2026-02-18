@@ -393,6 +393,8 @@ func TestStreamQueryRequest_ValidateAggregation(t *testing.T) {
 		{"min", false, ""},
 		{"max", false, ""},
 		{"count", false, ""},
+		{"min_time", false, ""},
+		{"max_time", false, ""},
 		{"invalid", true, "aggregation must be one of"},
 	}
 

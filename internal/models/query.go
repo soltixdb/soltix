@@ -16,7 +16,7 @@ type QueryRequest struct {
 	Fields                []string
 	Limit                 int64
 	Interval              string  // 1m, 5m, 1h, 1d, 1mo, 1y
-	Aggregation           string  // max, min, avg, sum, count (default: sum)
+	Aggregation           string  // max, min, avg, sum, count, min_time, max_time (default: sum)
 	Downsampling          string  // none (default), auto, lttb, minmax, avg, m4
 	DownsamplingThreshold int     // target point count (0 = auto-calculate based on data size)
 	AnomalyDetection      string  // none (default), zscore, iqr, moving_avg, auto
@@ -179,11 +179,12 @@ func (q *QueryRequest) Validate() error {
 	// Validate aggregation
 	validAggregations := map[string]bool{
 		"sum": true, "avg": true, "min": true, "max": true, "count": true,
+		"min_time": true, "max_time": true,
 	}
 	if !validAggregations[q.Aggregation] {
 		return &fiber.Error{
 			Code:    fiber.StatusBadRequest,
-			Message: "aggregation must be one of: sum, avg, min, max, count",
+			Message: "aggregation must be one of: sum, avg, min, max, count, min_time, max_time",
 		}
 	}
 

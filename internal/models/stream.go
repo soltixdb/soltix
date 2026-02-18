@@ -174,11 +174,12 @@ func (s *StreamQueryRequest) validateBase() error {
 	// Validate aggregation
 	validAggregations := map[string]bool{
 		"sum": true, "avg": true, "min": true, "max": true, "count": true,
+		"min_time": true, "max_time": true,
 	}
 	if !validAggregations[s.Aggregation] {
 		return &fiber.Error{
 			Code:    fiber.StatusBadRequest,
-			Message: "aggregation must be one of: sum, avg, min, max, count",
+			Message: "aggregation must be one of: sum, avg, min, max, count, min_time, max_time",
 		}
 	}
 

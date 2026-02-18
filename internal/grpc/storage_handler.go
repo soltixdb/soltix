@@ -663,6 +663,10 @@ func (h *StorageServiceHandler) convertAggregatedToDataPoints(
 				value = aggField.Max
 			case "count":
 				value = float64(aggField.Count)
+			case "min_time":
+				value = float64(aggField.MinTime / int64(time.Millisecond))
+			case "max_time":
+				value = float64(aggField.MaxTime / int64(time.Millisecond))
 			default:
 				value = aggField.Sum // default to sum
 			}

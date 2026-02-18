@@ -103,6 +103,8 @@ func TestStorage_ReadAggregatedPoints(t *testing.T) {
 					Avg:        25.0,
 					Min:        20.0,
 					Max:        30.0,
+					MinTime:    now.UnixNano(),
+					MaxTime:    now.UnixNano(),
 					SumSquares: 6300.0,
 				},
 			},
@@ -118,6 +120,8 @@ func TestStorage_ReadAggregatedPoints(t *testing.T) {
 					Avg:        26.0,
 					Min:        21.0,
 					Max:        31.0,
+					MinTime:    now.Add(time.Hour).UnixNano(),
+					MaxTime:    now.Add(time.Hour).UnixNano(),
 					SumSquares: 6760.0,
 				},
 			},
@@ -140,6 +144,14 @@ func TestStorage_ReadAggregatedPoints(t *testing.T) {
 
 	if len(readPoints) != 2 {
 		t.Errorf("Expected 2 points, got %d", len(readPoints))
+	}
+
+	first := readPoints[0].Fields["temperature"]
+	if first == nil {
+		t.Fatal("temperature field missing in first point")
+	}
+	if first.MinTime == 0 || first.MaxTime == 0 {
+		t.Errorf("Expected MinTime/MaxTime to be populated, got min=%d max=%d", first.MinTime, first.MaxTime)
 	}
 }
 
