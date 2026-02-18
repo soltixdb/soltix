@@ -310,7 +310,7 @@ func (s *Storage) ReadAggregatedPoints(level AggregationLevel, database, collect
 
 	// Build metric filter set
 	var metricFilter map[MetricType]struct{}
-	if len(opts.Metrics) > 0 && len(opts.Metrics) < 5 {
+	if len(opts.Metrics) > 0 && len(opts.Metrics) < len(AllMetricTypes()) {
 		metricFilter = make(map[MetricType]struct{})
 		for _, m := range opts.Metrics {
 			metricFilter[m] = struct{}{}
@@ -532,7 +532,7 @@ func (s *Storage) mergeV6ColumnarData(
 
 		// Merge int columns (count)
 		for colKey, values := range data.IntColumns {
-			fieldName := v6ParseIntKey(colKey)
+			metric, fieldName := v6ParseIntKey(colKey)
 			if fieldName == "" || i >= len(values) {
 				continue
 			}
@@ -542,7 +542,15 @@ func (s *Storage) mergeV6ColumnarData(
 				field = &AggregatedField{}
 				point.Fields[fieldName] = field
 			}
-			field.Count = values[i]
+
+			switch metric {
+			case MetricCount:
+				field.Count = values[i]
+			case MetricMinTime:
+				field.MinTime = values[i]
+			case MetricMaxTime:
+				field.MaxTime = values[i]
+			}
 		}
 	}
 }

@@ -75,6 +75,12 @@ func TestAggregateRawDataPoints_Basic(t *testing.T) {
 	if tempField.Max != 24.0 {
 		t.Errorf("Expected temperature Max=24.0, got %f", tempField.Max)
 	}
+	if tempField.MinTime != now.UnixNano() {
+		t.Errorf("Expected temperature MinTime=%d, got %d", now.UnixNano(), tempField.MinTime)
+	}
+	if tempField.MaxTime != now.Add(2*time.Minute).UnixNano() {
+		t.Errorf("Expected temperature MaxTime=%d, got %d", now.Add(2*time.Minute).UnixNano(), tempField.MaxTime)
+	}
 
 	// Check humidity aggregation
 	humidityField := agg.Fields["humidity"]

@@ -24,19 +24,43 @@ type AggregatedField struct {
 	Avg        float64 // Average
 	Min        float64 // Minimum
 	Max        float64 // Maximum
+	MinTime    int64   // UnixNano timestamp of minimum value (0 = unknown)
+	MaxTime    int64   // UnixNano timestamp of maximum value (0 = unknown)
 	SumSquares float64 // For variance calculation
 }
 
 // NewAggregatedField creates a new aggregated field from a single value
 func NewAggregatedField(value float64) *AggregatedField {
+	return NewAggregatedFieldWithTime(value, time.Time{})
+}
+
+// NewAggregatedFieldWithTime creates a new aggregated field from a single value and its timestamp
+func NewAggregatedFieldWithTime(value float64, observedAt time.Time) *AggregatedField {
+	ts := observedAt.UnixNano()
+	if observedAt.IsZero() {
+		ts = 0
+	}
+
 	return &AggregatedField{
 		Count:      1,
 		Sum:        value,
 		Avg:        value,
 		Min:        value,
 		Max:        value,
+		MinTime:    ts,
+		MaxTime:    ts,
 		SumSquares: value * value,
 	}
+}
+
+func mergeExtremaTime(current, candidate int64) int64 {
+	if candidate == 0 {
+		return current
+	}
+	if current == 0 || candidate < current {
+		return candidate
+	}
+	return current
 }
 
 // Merge combines another aggregated field into this one
@@ -47,9 +71,15 @@ func (af *AggregatedField) Merge(other *AggregatedField) {
 
 	if other.Min < af.Min {
 		af.Min = other.Min
+		af.MinTime = other.MinTime
+	} else if other.Min == af.Min {
+		af.MinTime = mergeExtremaTime(af.MinTime, other.MinTime)
 	}
 	if other.Max > af.Max {
 		af.Max = other.Max
+		af.MaxTime = other.MaxTime
+	} else if other.Max == af.Max {
+		af.MaxTime = mergeExtremaTime(af.MaxTime, other.MaxTime)
 	}
 
 	// Recalculate average
@@ -60,15 +90,31 @@ func (af *AggregatedField) Merge(other *AggregatedField) {
 
 // AddValue adds a single value to the aggregation
 func (af *AggregatedField) AddValue(value float64) {
+	af.AddValueWithTime(value, time.Time{})
+}
+
+// AddValueWithTime adds a single value and timestamp to the aggregation
+func (af *AggregatedField) AddValueWithTime(value float64, observedAt time.Time) {
+	ts := observedAt.UnixNano()
+	if observedAt.IsZero() {
+		ts = 0
+	}
+
 	af.Count++
 	af.Sum += value
 	af.SumSquares += value * value
 
 	if value < af.Min {
 		af.Min = value
+		af.MinTime = ts
+	} else if value == af.Min {
+		af.MinTime = mergeExtremaTime(af.MinTime, ts)
 	}
 	if value > af.Max {
 		af.Max = value
+		af.MaxTime = ts
+	} else if value == af.Max {
+		af.MaxTime = mergeExtremaTime(af.MaxTime, ts)
 	}
 
 	af.Avg = af.Sum / float64(af.Count)

@@ -32,6 +32,24 @@ func TestNewAggregatedField(t *testing.T) {
 	if field.SumSquares != 100.0 {
 		t.Errorf("Expected SumSquares=100.0, got %f", field.SumSquares)
 	}
+	if field.MinTime != 0 {
+		t.Errorf("Expected MinTime=0, got %d", field.MinTime)
+	}
+	if field.MaxTime != 0 {
+		t.Errorf("Expected MaxTime=0, got %d", field.MaxTime)
+	}
+}
+
+func TestNewAggregatedFieldWithTime(t *testing.T) {
+	ts := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	field := NewAggregatedFieldWithTime(10.0, ts)
+
+	if field.MinTime != ts.UnixNano() {
+		t.Errorf("Expected MinTime=%d, got %d", ts.UnixNano(), field.MinTime)
+	}
+	if field.MaxTime != ts.UnixNano() {
+		t.Errorf("Expected MaxTime=%d, got %d", ts.UnixNano(), field.MaxTime)
+	}
 }
 
 func TestAggregatedField_AddValue(t *testing.T) {
@@ -58,11 +76,12 @@ func TestAggregatedField_AddValue(t *testing.T) {
 }
 
 func TestAggregatedField_AddValue_UpdatesMinMax(t *testing.T) {
-	field := NewAggregatedField(50.0)
+	base := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	field := NewAggregatedFieldWithTime(50.0, base)
 
-	field.AddValue(10.0)  // New min
-	field.AddValue(100.0) // New max
-	field.AddValue(30.0)
+	field.AddValueWithTime(10.0, base.Add(time.Minute))    // New min
+	field.AddValueWithTime(100.0, base.Add(2*time.Minute)) // New max
+	field.AddValueWithTime(30.0, base.Add(3*time.Minute))
 
 	if field.Min != 10.0 {
 		t.Errorf("Expected Min=10.0, got %f", field.Min)
@@ -73,16 +92,23 @@ func TestAggregatedField_AddValue_UpdatesMinMax(t *testing.T) {
 	if field.Count != 4 {
 		t.Errorf("Expected Count=4, got %d", field.Count)
 	}
+	if field.MinTime != base.Add(time.Minute).UnixNano() {
+		t.Errorf("Expected MinTime=%d, got %d", base.Add(time.Minute).UnixNano(), field.MinTime)
+	}
+	if field.MaxTime != base.Add(2*time.Minute).UnixNano() {
+		t.Errorf("Expected MaxTime=%d, got %d", base.Add(2*time.Minute).UnixNano(), field.MaxTime)
+	}
 }
 
 func TestAggregatedField_Merge(t *testing.T) {
-	field1 := NewAggregatedField(10.0)
-	field1.AddValue(20.0)
-	field1.AddValue(30.0)
+	base := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	field1 := NewAggregatedFieldWithTime(10.0, base)
+	field1.AddValueWithTime(20.0, base.Add(time.Minute))
+	field1.AddValueWithTime(30.0, base.Add(2*time.Minute))
 	// field1: count=3, sum=60, avg=20, min=10, max=30
 
-	field2 := NewAggregatedField(5.0)
-	field2.AddValue(35.0)
+	field2 := NewAggregatedFieldWithTime(5.0, base.Add(3*time.Minute))
+	field2.AddValueWithTime(35.0, base.Add(4*time.Minute))
 	// field2: count=2, sum=40, avg=20, min=5, max=35
 
 	field1.Merge(field2)
@@ -101,6 +127,12 @@ func TestAggregatedField_Merge(t *testing.T) {
 	}
 	if field1.Max != 35.0 {
 		t.Errorf("Expected Max=35.0, got %f", field1.Max)
+	}
+	if field1.MinTime != base.Add(3*time.Minute).UnixNano() {
+		t.Errorf("Expected MinTime=%d, got %d", base.Add(3*time.Minute).UnixNano(), field1.MinTime)
+	}
+	if field1.MaxTime != base.Add(4*time.Minute).UnixNano() {
+		t.Errorf("Expected MaxTime=%d, got %d", base.Add(4*time.Minute).UnixNano(), field1.MaxTime)
 	}
 }
 

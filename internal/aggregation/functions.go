@@ -66,9 +66,9 @@ func AggregateRawDataPoints(deviceID string, points []*RawDataPoint, level Aggre
 			}
 
 			if agg.Fields[fieldName] == nil {
-				agg.Fields[fieldName] = NewAggregatedField(value)
+				agg.Fields[fieldName] = NewAggregatedFieldWithTime(value, point.Time)
 			} else {
-				agg.Fields[fieldName].AddValue(value)
+				agg.Fields[fieldName].AddValueWithTime(value, point.Time)
 			}
 		}
 	}
@@ -115,6 +115,8 @@ func AggregateAggregatedPoints(deviceID string, points []*AggregatedPoint, level
 					Avg:        field.Avg,
 					Min:        field.Min,
 					Max:        field.Max,
+					MinTime:    field.MinTime,
+					MaxTime:    field.MaxTime,
 					SumSquares: field.SumSquares,
 				}
 			} else {
