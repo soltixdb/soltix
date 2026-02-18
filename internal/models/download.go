@@ -34,7 +34,7 @@ type DownloadRequest struct {
 	IDs          []string `json:"ids,omitempty"`
 	Fields       []string `json:"fields,omitempty"`
 	Interval     string   `json:"interval,omitempty"`     // 1m, 5m, 1h, 1d, 1mo, 1y
-	Aggregation  string   `json:"aggregation,omitempty"`  // max, min, avg, sum, count
+	Aggregation  string   `json:"aggregation,omitempty"`  // max, min, avg, sum, count, min_time, max_time
 	Downsampling string   `json:"downsampling,omitempty"` // none, auto, lttb, minmax, avg, m4
 	Format       string   `json:"format"`                 // csv, json
 	Filename     string   `json:"filename,omitempty"`     // Optional custom filename
@@ -161,11 +161,12 @@ func (d *DownloadRequest) Validate() error {
 	// Validate aggregation
 	validAggregations := map[string]bool{
 		"sum": true, "avg": true, "min": true, "max": true, "count": true,
+		"min_time": true, "max_time": true,
 	}
 	if !validAggregations[d.Aggregation] {
 		return &fiber.Error{
 			Code:    fiber.StatusBadRequest,
-			Message: "aggregation must be one of: sum, avg, min, max, count",
+			Message: "aggregation must be one of: sum, avg, min, max, count, min_time, max_time",
 		}
 	}
 

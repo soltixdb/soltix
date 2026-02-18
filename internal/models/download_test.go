@@ -35,6 +35,17 @@ func TestDownloadRequest_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid request - min_time aggregation",
+			request: NewDownloadRequest(
+				"testdb", "testcol",
+				"2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z",
+				[]string{"device1"}, nil,
+				"1h", "min_time", "none",
+				"json", "",
+			),
+			wantErr: false,
+		},
+		{
 			name: "valid request - no time range limit",
 			request: NewDownloadRequest(
 				"testdb", "testcol",

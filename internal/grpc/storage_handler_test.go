@@ -369,17 +369,21 @@ func TestStorageServiceHandler_ConvertAggregatedToDataPoints(t *testing.T) {
 	handler := NewStorageServiceHandler("/tmp/test", "node1", logger, memStore, columnarStorage, aggStorage)
 
 	now := time.Now()
+	minTime := now.Add(-10 * time.Minute).UnixNano()
+	maxTime := now.Add(-2 * time.Minute).UnixNano()
 	aggPoints := []*aggregation.AggregatedPoint{
 		{
 			DeviceID: "device1",
 			Time:     now,
 			Fields: map[string]*aggregation.AggregatedField{
 				"temperature": {
-					Sum:   100.0,
-					Avg:   25.0,
-					Min:   20.0,
-					Max:   30.0,
-					Count: 4,
+					Sum:     100.0,
+					Avg:     25.0,
+					Min:     20.0,
+					Max:     30.0,
+					Count:   4,
+					MinTime: minTime,
+					MaxTime: maxTime,
 				},
 			},
 		},
@@ -409,6 +413,16 @@ func TestStorageServiceHandler_ConvertAggregatedToDataPoints(t *testing.T) {
 			name:            "max aggregation",
 			aggregationType: "max",
 			expectedValue:   30.0,
+		},
+		{
+			name:            "min_time aggregation",
+			aggregationType: "min_time",
+			expectedValue:   float64(minTime / int64(time.Millisecond)),
+		},
+		{
+			name:            "max_time aggregation",
+			aggregationType: "max_time",
+			expectedValue:   float64(maxTime / int64(time.Millisecond)),
 		},
 	}
 
