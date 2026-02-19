@@ -80,8 +80,30 @@ func (s *NATSSubscriber) Subscribe(ctx context.Context, subject string, handler 
 	sanitizedSubject = strings.ReplaceAll(sanitizedSubject, "*", "all")
 	durableName := fmt.Sprintf("%s-%s-%s", s.consumerGroup, s.nodeID, sanitizedSubject)
 
+	// Determine delivery policy based on subject pattern
+	// Admin/broadcast subjects: DeliverNew (only new messages, no replay)
+	// Node-specific subjects: DeliverAll (replay all messages for reliability)
+	isAdminSubject := strings.Contains(subject, ".admin.")
+
 	// Track message count for debugging (atomic to prevent race condition)
 	var msgCount uint64
+
+	// Build subscription options
+	subOpts := []nats.SubOpt{
+		nats.Durable(durableName),
+		nats.ManualAck(),
+		nats.MaxAckPending(100),        // Flow control - max pending messages
+		nats.AckWait(30 * time.Second), // Timeout before redeliver
+		nats.MaxDeliver(3),             // Max redelivery attempts
+	}
+
+	// Admin subjects use DeliverNew (broadcast, no replay)
+	// Regular subjects use DeliverAll (node-specific, replay for reliability)
+	if isAdminSubject {
+		subOpts = append(subOpts, nats.DeliverNew())
+	} else {
+		subOpts = append(subOpts, nats.DeliverAll())
+	}
 
 	sub, err := s.js.Subscribe(subject, func(msg *nats.Msg) {
 		// Increment message counter atomically
@@ -107,20 +129,16 @@ func (s *NATSSubscriber) Subscribe(ctx context.Context, subject string, handler 
 			return
 		}
 		_ = msg.Ack()
-	},
-		nats.Durable(durableName),
-		nats.ManualAck(),
-		nats.MaxAckPending(100),      // Flow control - max pending messages
-		nats.AckWait(30*time.Second), // Timeout before redeliver
-		nats.MaxDeliver(3),           // Max redelivery attempts
-		nats.DeliverAll(),            // Deliver ALL messages including old ones
-	)
+	}, subOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe to %s: %w", subject, err)
 	}
 
 	s.subscriptions[subject] = sub
-	natsLog.Info("Subscribed to subject", "subject", subject, "durable", durableName)
+	natsLog.Info("Subscribed to subject",
+		"subject", subject,
+		"durable", durableName,
+		"is_admin", isAdminSubject)
 	return nil
 }
 
@@ -141,20 +159,29 @@ func (s *NATSSubscriber) ensureStream(subject string) error {
 		return nil // Stream exists
 	}
 
+	// Determine stream retention policy based on subject pattern
+	// Admin/broadcast subjects (*.admin.*) should use LimitsPolicy (fanout to all consumers)
+	// Node-specific subjects should use WorkQueuePolicy (only one consumer gets the message)
+	retention := nats.WorkQueuePolicy
+	if strings.Contains(subject, ".admin.") {
+		retention = nats.LimitsPolicy
+	}
+
 	// Create stream if it doesn't exist
 	_, err = s.js.AddStream(&nats.StreamConfig{
 		Name:      streamName,
 		Subjects:  []string{subject},
-		Retention: nats.WorkQueuePolicy,
+		Retention: retention,
 		MaxAge:    24 * time.Hour,
 		Storage:   nats.FileStorage,
 		Replicas:  1,
 	})
 	if err != nil && err != nats.ErrStreamNameAlreadyInUse {
-		natsLog.Error("Failed to create stream", "stream", streamName, "error", err)
+		natsLog.Error("Failed to create stream", "stream", streamName, "retention", retention, "error", err)
 		return fmt.Errorf("failed to create stream %s: %w", streamName, err)
 	}
 
+	natsLog.Info("Stream ensured", "stream", streamName, "subject", subject, "retention", retention)
 	return nil
 }
 
