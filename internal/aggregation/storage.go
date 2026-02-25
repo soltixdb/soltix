@@ -586,28 +586,66 @@ func (cd *ColumnarData) AddRowAllMetrics(timestamp int64, deviceID string, field
 	cd.Timestamps = append(cd.Timestamps, timestamp)
 	cd.DeviceIDs = append(cd.DeviceIDs, deviceID)
 
+	expectedLen := len(cd.Timestamps)
+
 	for fieldName, field := range fields {
 		sumKey := v6FloatKey(MetricSum, fieldName)
+		cd.FloatColumns[sumKey] = padFloat64Column(cd.FloatColumns[sumKey], expectedLen-1)
 		cd.FloatColumns[sumKey] = append(cd.FloatColumns[sumKey], field.Sum)
 
 		avgKey := v6FloatKey(MetricAvg, fieldName)
+		cd.FloatColumns[avgKey] = padFloat64Column(cd.FloatColumns[avgKey], expectedLen-1)
 		cd.FloatColumns[avgKey] = append(cd.FloatColumns[avgKey], field.Avg)
 
 		minKey := v6FloatKey(MetricMin, fieldName)
+		cd.FloatColumns[minKey] = padFloat64Column(cd.FloatColumns[minKey], expectedLen-1)
 		cd.FloatColumns[minKey] = append(cd.FloatColumns[minKey], field.Min)
 
 		maxKey := v6FloatKey(MetricMax, fieldName)
+		cd.FloatColumns[maxKey] = padFloat64Column(cd.FloatColumns[maxKey], expectedLen-1)
 		cd.FloatColumns[maxKey] = append(cd.FloatColumns[maxKey], field.Max)
 
 		countKey := v6IntKey(fieldName)
+		cd.IntColumns[countKey] = padInt64Column(cd.IntColumns[countKey], expectedLen-1)
 		cd.IntColumns[countKey] = append(cd.IntColumns[countKey], field.Count)
 
 		minTimeKey := v6IntMetricKey(MetricMinTime, fieldName)
+		cd.IntColumns[minTimeKey] = padInt64Column(cd.IntColumns[minTimeKey], expectedLen-1)
 		cd.IntColumns[minTimeKey] = append(cd.IntColumns[minTimeKey], field.MinTime)
 
 		maxTimeKey := v6IntMetricKey(MetricMaxTime, fieldName)
+		cd.IntColumns[maxTimeKey] = padInt64Column(cd.IntColumns[maxTimeKey], expectedLen-1)
 		cd.IntColumns[maxTimeKey] = append(cd.IntColumns[maxTimeKey], field.MaxTime)
 	}
+
+	// Pad all existing columns that were NOT present in this row's fields
+	// to maintain alignment with the Timestamps array
+	for key, col := range cd.FloatColumns {
+		if len(col) < expectedLen {
+			cd.FloatColumns[key] = append(col, 0)
+		}
+	}
+	for key, col := range cd.IntColumns {
+		if len(col) < expectedLen {
+			cd.IntColumns[key] = append(col, 0)
+		}
+	}
+}
+
+// padFloat64Column pads a float64 column with zeros to reach the target length
+func padFloat64Column(col []float64, targetLen int) []float64 {
+	for len(col) < targetLen {
+		col = append(col, 0)
+	}
+	return col
+}
+
+// padInt64Column pads an int64 column with zeros to reach the target length
+func padInt64Column(col []int64, targetLen int) []int64 {
+	for len(col) < targetLen {
+		col = append(col, 0)
+	}
+	return col
 }
 
 // RowCount returns the number of rows
