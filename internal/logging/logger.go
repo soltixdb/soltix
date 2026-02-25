@@ -120,7 +120,18 @@ func (l *Logger) Warn(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			key := fields[i].(string)
+			value := fields[i+1]
+			// Special handling for error type
+			if key == "error" {
+				if err, ok := value.(error); ok {
+					e.Str("error", err.Error())
+				} else {
+					e.Interface(key, value)
+				}
+			} else {
+				e.Interface(key, value)
+			}
 		}
 	}
 	e.Msg(msg)
@@ -132,7 +143,18 @@ func (l *Logger) Error(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			key := fields[i].(string)
+			value := fields[i+1]
+			// Special handling for error type
+			if key == "error" {
+				if err, ok := value.(error); ok {
+					e.Str("error", err.Error())
+				} else {
+					e.Interface(key, value)
+				}
+			} else {
+				e.Interface(key, value)
+			}
 		}
 	}
 	e.Msg(msg)
@@ -144,7 +166,18 @@ func (l *Logger) Fatal(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			key := fields[i].(string)
+			value := fields[i+1]
+			// Special handling for error type to ensure it's logged correctly
+			if key == "error" {
+				if err, ok := value.(error); ok {
+					e.Str("error", err.Error())
+				} else {
+					e.Interface(key, value)
+				}
+			} else {
+				e.Interface(key, value)
+			}
 		}
 	}
 	e.Msg(msg)

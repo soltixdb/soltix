@@ -355,8 +355,10 @@ func (s *Storage) getPartitionDirsInRange(level AggregationLevel, database, coll
 
 	switch level {
 	case AggregationHourly:
-		// Hourly data is organized by day
-		for t := start.Truncate(24 * time.Hour); !t.After(end); t = t.AddDate(0, 0, 1) {
+		// Hourly data is organized by day — truncate to day boundary in storage timezone
+		startInTZ := start.In(s.timezone)
+		dayStart := time.Date(startInTZ.Year(), startInTZ.Month(), startInTZ.Day(), 0, 0, 0, 0, s.timezone)
+		for t := dayStart; !t.After(end); t = t.AddDate(0, 0, 1) {
 			dir := s.getPartitionDir(level, database, collection, t)
 			if _, err := os.Stat(dir); err == nil {
 				dirs = append(dirs, dir)

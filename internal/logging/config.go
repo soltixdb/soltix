@@ -1,8 +1,10 @@
 package logging
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -17,18 +19,26 @@ func NewFromConfig(cfg config.LoggingConfig) (*Logger, error) {
 		level = zerolog.InfoLevel
 	}
 
+	// Determine output path
+	outputPath := cfg.OutputPath
+
 	// Configure output writer
 	var output io.Writer
-	switch cfg.OutputPath {
+	switch outputPath {
 	case "stdout", "":
 		output = os.Stdout
 	case "stderr":
 		output = os.Stderr
 	default:
-		// File output
-		file, err := os.OpenFile(cfg.OutputPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		// File output - ensure parent directory exists
+		logDir := filepath.Dir(outputPath)
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create log directory %s: %w", logDir, err)
+		}
+
+		file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to open log file %s: %w", outputPath, err)
 		}
 		output = file
 	}
