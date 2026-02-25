@@ -40,6 +40,7 @@ type WriteWorker struct {
 	memMaxAge  time.Duration    // Max age for data to be stored in memory
 	lastActive time.Time
 	stopCh     chan struct{}
+	done       chan struct{} // closed when run() goroutine exits
 	stopped    bool
 	mu         sync.Mutex
 }
@@ -78,16 +79,23 @@ func (p *WriteWorkerPool) Start() {
 	p.logger.Info("Write worker pool started")
 }
 
-// Stop stops all workers and the pool
+// Stop stops all workers and the pool, waiting for all to drain
 func (p *WriteWorkerPool) Stop() {
 	close(p.stopCh)
 
-	// Stop all workers
+	// Stop all workers and collect them for waiting
 	p.workersMu.Lock()
+	workers := make([]*WriteWorker, 0, len(p.workers))
 	for _, worker := range p.workers {
 		worker.Stop()
+		workers = append(workers, worker)
 	}
 	p.workersMu.Unlock()
+
+	// Wait for all worker goroutines to finish draining
+	for _, worker := range workers {
+		<-worker.done
+	}
 
 	p.wg.Wait()
 	p.logger.Info("Write worker pool stopped")
@@ -271,6 +279,7 @@ func (p *WriteWorkerPool) getOrCreateWorker(key, database, collection, date stri
 		memMaxAge:  p.memMaxAge,
 		lastActive: time.Now(),
 		stopCh:     make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 
 	p.workers[key] = worker
@@ -346,6 +355,7 @@ func (p *WriteWorkerPool) Stats() map[string]interface{} {
 
 // run is the main loop for the worker
 func (w *WriteWorker) run() {
+	defer close(w.done)
 	w.logger.Debug("Write worker started", "partition", w.key)
 
 	for {
