@@ -30,11 +30,17 @@ type DataPointInterface interface {
 // AggregationStorage defines the interface for aggregation storage
 // Both the old row-based Storage and new ColumnarStorage implement this
 type AggregationStorage interface {
-	// Write methods
+	// Write methods (append to existing data)
 	WriteHourly(database, collection string, points []*AggregatedPoint) error
 	WriteDaily(database, collection string, points []*AggregatedPoint) error
 	WriteMonthly(database, collection string, points []*AggregatedPoint) error
 	WriteYearly(database, collection string, points []*AggregatedPoint) error
+
+	// Replace methods (clean existing partition data before writing)
+	// Used by cascade re-aggregation to prevent part file proliferation
+	ReplaceDaily(database, collection string, points []*AggregatedPoint) error
+	ReplaceMonthly(database, collection string, points []*AggregatedPoint) error
+	ReplaceYearly(database, collection string, points []*AggregatedPoint) error
 
 	// Read methods
 	ReadHourly(database, collection, date string) ([]*AggregatedPoint, error)

@@ -978,6 +978,76 @@ func (s *Storage) NeedsCompaction(partDir string, minParts int) (bool, map[strin
 	return needsCompact, partsCount
 }
 
+// =============================================================================
+// Replace API (clean-and-write for cascade re-aggregation)
+// =============================================================================
+
+// CleanPartitionData removes all data files and metadata from a partition directory,
+// preparing it for a fresh write. This prevents part file proliferation during
+// cascade re-aggregation (e.g., daily aggregated from hourly).
+func (s *Storage) CleanPartitionData(partDir string) error {
+	// Check if the directory exists
+	if _, err := os.Stat(partDir); os.IsNotExist(err) {
+		return nil // Nothing to clean
+	}
+
+	// Read existing metadata to find all DG directories
+	meta, err := s.readMetadata(partDir)
+	if err != nil {
+		// If metadata is unreadable, do a full removal
+		s.invalidateMetadataCache(partDir)
+		if err := os.RemoveAll(partDir); err != nil {
+			return fmt.Errorf("failed to remove partition directory: %w", err)
+		}
+		return nil
+	}
+
+	if meta != nil {
+		// Remove all DG directories
+		for _, dg := range meta.DeviceGroups {
+			dgDir := filepath.Join(partDir, dg.DirName)
+			if err := os.RemoveAll(dgDir); err != nil {
+				if s.logger != nil {
+					s.logger.Warn("Failed to remove DG directory during clean",
+						"dgDir", dgDir, "error", err)
+				}
+			}
+		}
+	}
+
+	// Remove global metadata file
+	metaPath := filepath.Join(partDir, MetadataFile)
+	_ = os.Remove(metaPath)
+
+	// Invalidate metadata cache
+	s.invalidateMetadataCache(partDir)
+
+	if s.logger != nil {
+		s.logger.Debug("Cleaned partition data for fresh write", "partDir", partDir)
+	}
+
+	return nil
+}
+
+// ReplaceAggregatedPoints cleans existing partition data and writes fresh data.
+// This is used by cascade re-aggregation (daily, monthly, yearly) to prevent
+// duplicate data accumulation and part file proliferation.
+func (s *Storage) ReplaceAggregatedPoints(level AggregationLevel, database, collection string, points []*AggregatedPoint, t time.Time) error {
+	if len(points) == 0 {
+		return nil
+	}
+
+	partDir := s.getPartitionDir(level, database, collection, t)
+
+	// Clean existing data
+	if err := s.CleanPartitionData(partDir); err != nil {
+		return fmt.Errorf("failed to clean partition before replace: %w", err)
+	}
+
+	// Write fresh data
+	return s.WriteAggregatedPoints(level, database, collection, points, t)
+}
+
 // DeleteOldData deletes aggregation data older than a specified time
 func (s *Storage) DeleteOldData(level AggregationLevel, database, collection string, before time.Time) error {
 	partDirs := s.getPartitionDirsInRange(level, database, collection, time.Time{}, before)

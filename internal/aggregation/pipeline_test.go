@@ -40,6 +40,9 @@ type mockAggregationStorage struct {
 	writeDailyFunc         func(database, collection string, points []*AggregatedPoint) error
 	writeMonthlyFunc       func(database, collection string, points []*AggregatedPoint) error
 	writeYearlyFunc        func(database, collection string, points []*AggregatedPoint) error
+	replaceDailyFunc       func(database, collection string, points []*AggregatedPoint) error
+	replaceMonthlyFunc     func(database, collection string, points []*AggregatedPoint) error
+	replaceYearlyFunc      func(database, collection string, points []*AggregatedPoint) error
 	readHourlyFunc         func(database, collection, date string) ([]*AggregatedPoint, error)
 	readHourlyForDayFunc   func(database, collection string, day time.Time) ([]*AggregatedPoint, error)
 	readDailyForMonthFunc  func(database, collection string, month time.Time) ([]*AggregatedPoint, error)
@@ -74,6 +77,30 @@ func (m *mockAggregationStorage) WriteYearly(database, collection string, points
 		return m.writeYearlyFunc(database, collection, points)
 	}
 	return nil
+}
+
+func (m *mockAggregationStorage) ReplaceDaily(database, collection string, points []*AggregatedPoint) error {
+	if m.replaceDailyFunc != nil {
+		return m.replaceDailyFunc(database, collection, points)
+	}
+	// Fall back to WriteDaily for backward compatibility in tests
+	return m.WriteDaily(database, collection, points)
+}
+
+func (m *mockAggregationStorage) ReplaceMonthly(database, collection string, points []*AggregatedPoint) error {
+	if m.replaceMonthlyFunc != nil {
+		return m.replaceMonthlyFunc(database, collection, points)
+	}
+	// Fall back to WriteMonthly for backward compatibility in tests
+	return m.WriteMonthly(database, collection, points)
+}
+
+func (m *mockAggregationStorage) ReplaceYearly(database, collection string, points []*AggregatedPoint) error {
+	if m.replaceYearlyFunc != nil {
+		return m.replaceYearlyFunc(database, collection, points)
+	}
+	// Fall back to WriteYearly for backward compatibility in tests
+	return m.WriteYearly(database, collection, points)
 }
 
 func (m *mockAggregationStorage) ReadHourly(database, collection, date string) ([]*AggregatedPoint, error) {

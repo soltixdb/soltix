@@ -1376,20 +1376,49 @@ func (s *Storage) decodeV6AggFooter(data []byte) (*V6AggPartFooter, error) {
 // Merge helpers for append operations (V6)
 // =============================================================================
 
-// mergeColumnarDataForWrite merges existing columnar data with new data for append operations
+// mergeColumnarDataForWrite merges existing columnar data with new data for append operations.
+// Deduplicates by (timestamp, deviceID) — when duplicates exist, the newer data (from newData) wins.
 func (s *Storage) mergeColumnarDataForWrite(existing, newData *ColumnarData) *ColumnarData {
-	totalRows := existing.RowCount() + newData.RowCount()
-	merged := NewColumnarData(totalRows)
+	// Build a dedup index: for each (timestamp, deviceID) pair, track which
+	// source and row index should be kept. New data overwrites existing data.
+	type rowRef struct {
+		source int // 0 = existing, 1 = newData
+		index  int // row index in source
+	}
 
-	// Merge timestamps
-	merged.Timestamps = append(merged.Timestamps, existing.Timestamps...)
-	merged.Timestamps = append(merged.Timestamps, newData.Timestamps...)
+	// Use two-level map for efficient dedup: timestamp -> deviceID -> rowRef
+	// This avoids expensive fmt.Sprintf allocations in the hot path.
+	dedupMap := make(map[int64]map[string]rowRef)
 
-	// Merge device IDs
-	merged.DeviceIDs = append(merged.DeviceIDs, existing.DeviceIDs...)
-	merged.DeviceIDs = append(merged.DeviceIDs, newData.DeviceIDs...)
+	// Add existing rows first
+	for i := 0; i < existing.RowCount(); i++ {
+		ts := existing.Timestamps[i]
+		devID := existing.DeviceIDs[i]
+		if dedupMap[ts] == nil {
+			dedupMap[ts] = make(map[string]rowRef)
+		}
+		dedupMap[ts][devID] = rowRef{source: 0, index: i}
+	}
 
-	// Merge float columns
+	// Add new rows — these overwrite existing entries for the same (ts, deviceID)
+	for i := 0; i < newData.RowCount(); i++ {
+		ts := newData.Timestamps[i]
+		devID := newData.DeviceIDs[i]
+		if dedupMap[ts] == nil {
+			dedupMap[ts] = make(map[string]rowRef)
+		}
+		dedupMap[ts][devID] = rowRef{source: 1, index: i}
+	}
+
+	// Count unique rows
+	uniqueCount := 0
+	for _, devMap := range dedupMap {
+		uniqueCount += len(devMap)
+	}
+
+	merged := NewColumnarData(uniqueCount)
+
+	// Collect all column keys from both sources
 	allFloatFields := make(map[string]struct{})
 	for field := range existing.FloatColumns {
 		allFloatFields[field] = struct{}{}
@@ -1397,19 +1426,7 @@ func (s *Storage) mergeColumnarDataForWrite(existing, newData *ColumnarData) *Co
 	for field := range newData.FloatColumns {
 		allFloatFields[field] = struct{}{}
 	}
-	for field := range allFloatFields {
-		existingVals := existing.FloatColumns[field]
-		newVals := newData.FloatColumns[field]
-		if len(existingVals) == 0 {
-			existingVals = make([]float64, existing.RowCount())
-		}
-		if len(newVals) == 0 {
-			newVals = make([]float64, newData.RowCount())
-		}
-		merged.FloatColumns[field] = append(append([]float64{}, existingVals...), newVals...)
-	}
 
-	// Merge int columns
 	allIntFields := make(map[string]struct{})
 	for field := range existing.IntColumns {
 		allIntFields[field] = struct{}{}
@@ -1417,16 +1434,55 @@ func (s *Storage) mergeColumnarDataForWrite(existing, newData *ColumnarData) *Co
 	for field := range newData.IntColumns {
 		allIntFields[field] = struct{}{}
 	}
+
+	// Pre-initialize merged column slices
+	for field := range allFloatFields {
+		merged.FloatColumns[field] = make([]float64, 0, uniqueCount)
+	}
 	for field := range allIntFields {
-		existingVals := existing.IntColumns[field]
-		newVals := newData.IntColumns[field]
-		if len(existingVals) == 0 {
-			existingVals = make([]int64, existing.RowCount())
+		merged.IntColumns[field] = make([]int64, 0, uniqueCount)
+	}
+
+	// Helper to get float value from a source at a given row index
+	getFloat := func(src int, field string, idx int) float64 {
+		var source *ColumnarData
+		if src == 0 {
+			source = existing
+		} else {
+			source = newData
 		}
-		if len(newVals) == 0 {
-			newVals = make([]int64, newData.RowCount())
+		if vals, ok := source.FloatColumns[field]; ok && idx < len(vals) {
+			return vals[idx]
 		}
-		merged.IntColumns[field] = append(append([]int64{}, existingVals...), newVals...)
+		return 0
+	}
+
+	getInt := func(src int, field string, idx int) int64 {
+		var source *ColumnarData
+		if src == 0 {
+			source = existing
+		} else {
+			source = newData
+		}
+		if vals, ok := source.IntColumns[field]; ok && idx < len(vals) {
+			return vals[idx]
+		}
+		return 0
+	}
+
+	// Iterate dedup map and build merged result
+	for ts, devMap := range dedupMap {
+		for devID, ref := range devMap {
+			merged.Timestamps = append(merged.Timestamps, ts)
+			merged.DeviceIDs = append(merged.DeviceIDs, devID)
+
+			for field := range allFloatFields {
+				merged.FloatColumns[field] = append(merged.FloatColumns[field], getFloat(ref.source, field, ref.index))
+			}
+			for field := range allIntFields {
+				merged.IntColumns[field] = append(merged.IntColumns[field], getInt(ref.source, field, ref.index))
+			}
+		}
 	}
 
 	return merged

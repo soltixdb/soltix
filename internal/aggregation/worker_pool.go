@@ -708,8 +708,10 @@ func (p *AggregationWorkerPool) aggregateDaily(worker *PartitionWorker) error {
 		return nil
 	}
 
-	// Write to storage
-	if err := p.aggStorage.WriteDaily(worker.database, worker.collection, allAggPoints); err != nil {
+	// Replace existing partition data with fresh aggregated data.
+	// Using ReplaceDaily instead of WriteDaily to prevent part file proliferation
+	// caused by repeated cascade re-aggregation appending duplicate data.
+	if err := p.aggStorage.ReplaceDaily(worker.database, worker.collection, allAggPoints); err != nil {
 		return fmt.Errorf("failed to write daily aggregates: %w", err)
 	}
 
@@ -766,8 +768,10 @@ func (p *AggregationWorkerPool) aggregateMonthly(worker *PartitionWorker) error 
 		return nil
 	}
 
-	// Write to storage
-	if err := p.aggStorage.WriteMonthly(worker.database, worker.collection, allAggPoints); err != nil {
+	// Replace existing partition data with fresh aggregated data.
+	// Using ReplaceMonthly instead of WriteMonthly to prevent part file proliferation
+	// caused by repeated cascade re-aggregation appending duplicate data.
+	if err := p.aggStorage.ReplaceMonthly(worker.database, worker.collection, allAggPoints); err != nil {
 		return fmt.Errorf("failed to write monthly aggregates: %w", err)
 	}
 
@@ -809,8 +813,10 @@ func (p *AggregationWorkerPool) aggregateYearly(worker *PartitionWorker) error {
 		aggPoints = append(aggPoints, aggPoint)
 	}
 
-	// Write to storage
-	if err := p.aggStorage.WriteYearly(worker.database, worker.collection, aggPoints); err != nil {
+	// Replace existing partition data with fresh aggregated data.
+	// Using ReplaceYearly instead of WriteYearly to prevent part file proliferation
+	// caused by repeated cascade re-aggregation appending duplicate data.
+	if err := p.aggStorage.ReplaceYearly(worker.database, worker.collection, aggPoints); err != nil {
 		return fmt.Errorf("failed to write yearly aggregates: %w", err)
 	}
 

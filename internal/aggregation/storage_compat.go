@@ -95,6 +95,71 @@ func (s *Storage) WriteYearly(database, collection string, points []*AggregatedP
 	return s.WriteAggregatedPoints(AggregationYearly, database, collection, points, time.Now())
 }
 
+// =============================================================================
+// Replace methods (clean-and-write for cascade re-aggregation)
+// =============================================================================
+
+// ReplaceDaily cleans existing daily partition data and writes fresh data.
+// Used by cascade re-aggregation to prevent part file proliferation.
+func (s *Storage) ReplaceDaily(database, collection string, points []*AggregatedPoint) error {
+	if len(points) == 0 {
+		return nil
+	}
+
+	// Group by month in configured timezone
+	byMonth := make(map[time.Time][]*AggregatedPoint)
+	for _, point := range points {
+		ts := point.Time.In(s.timezone)
+		monthStart := TruncateToMonth(ts)
+		byMonth[monthStart] = append(byMonth[monthStart], point)
+	}
+
+	// Replace each month (clean then write)
+	for monthStart, monthPoints := range byMonth {
+		if err := s.ReplaceAggregatedPoints(AggregationDaily, database, collection, monthPoints, monthStart); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ReplaceMonthly cleans existing monthly partition data and writes fresh data.
+// Used by cascade re-aggregation to prevent part file proliferation.
+func (s *Storage) ReplaceMonthly(database, collection string, points []*AggregatedPoint) error {
+	if len(points) == 0 {
+		return nil
+	}
+
+	// Group by year in configured timezone
+	byYear := make(map[time.Time][]*AggregatedPoint)
+	for _, point := range points {
+		ts := point.Time.In(s.timezone)
+		yearStart := TruncateToYear(ts)
+		byYear[yearStart] = append(byYear[yearStart], point)
+	}
+
+	// Replace each year (clean then write)
+	for yearStart, yearPoints := range byYear {
+		if err := s.ReplaceAggregatedPoints(AggregationMonthly, database, collection, yearPoints, yearStart); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ReplaceYearly cleans existing yearly partition data and writes fresh data.
+// Used by cascade re-aggregation to prevent part file proliferation.
+func (s *Storage) ReplaceYearly(database, collection string, points []*AggregatedPoint) error {
+	if len(points) == 0 {
+		return nil
+	}
+
+	// Replace all points together (clean then write)
+	return s.ReplaceAggregatedPoints(AggregationYearly, database, collection, points, time.Now())
+}
+
 // ReadHourly reads hourly aggregates for a specific date
 // date format: YYYYMMDD
 func (s *Storage) ReadHourly(database, collection, date string) ([]*AggregatedPoint, error) {
