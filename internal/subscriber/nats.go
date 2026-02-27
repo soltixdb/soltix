@@ -80,6 +80,16 @@ func (s *NATSSubscriber) Subscribe(ctx context.Context, subject string, handler 
 	sanitizedSubject = strings.ReplaceAll(sanitizedSubject, "*", "all")
 	durableName := fmt.Sprintf("%s-%s-%s", s.consumerGroup, s.nodeID, sanitizedSubject)
 
+	// Delete existing consumer if it exists (handles ungraceful shutdown)
+	streamName := s.getStreamName(subject)
+	if err := s.deleteConsumerIfExists(streamName, durableName); err != nil {
+		natsLog.Warn("Failed to delete existing consumer",
+			"stream", streamName,
+			"consumer", durableName,
+			"error", err)
+		// Continue anyway - the subscribe might still work
+	}
+
 	// Track message count for debugging (atomic to prevent race condition)
 	var msgCount uint64
 
@@ -165,6 +175,31 @@ func (s *NATSSubscriber) getStreamName(subject string) string {
 	sanitized := strings.ReplaceAll(subject, ".", "_")
 	sanitized = strings.ReplaceAll(sanitized, "-", "_")
 	return fmt.Sprintf("STREAM_%s", sanitized)
+}
+
+// deleteConsumerIfExists deletes a consumer if it exists
+// This is useful when restarting after ungraceful shutdown
+func (s *NATSSubscriber) deleteConsumerIfExists(streamName, consumerName string) error {
+	// Check if consumer exists
+	_, err := s.js.ConsumerInfo(streamName, consumerName)
+	if err != nil {
+		// Consumer doesn't exist, nothing to delete
+		return nil
+	}
+
+	// Consumer exists, delete it
+	natsLog.Info("Deleting existing consumer",
+		"stream", streamName,
+		"consumer", consumerName)
+
+	if err := s.js.DeleteConsumer(streamName, consumerName); err != nil {
+		return fmt.Errorf("failed to delete consumer %s from stream %s: %w", consumerName, streamName, err)
+	}
+
+	natsLog.Info("Successfully deleted existing consumer",
+		"stream", streamName,
+		"consumer", consumerName)
+	return nil
 }
 
 // Unsubscribe unsubscribes from a subject
