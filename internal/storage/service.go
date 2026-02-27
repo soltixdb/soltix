@@ -230,32 +230,25 @@ func (s *StorageService) Start() error {
 	}
 	s.logger.Info("Successfully subscribed to write subject", "subject", writeSubject)
 
-	// Step 3: Subscribe to admin flush trigger
-	flushSubject := "soltix.admin.flush.trigger"
-	if err := s.subscriber.Subscribe(s.ctx, flushSubject, s.handleFlushTrigger); err != nil {
-		return fmt.Errorf("failed to subscribe to flush trigger: %w", err)
-	}
-	s.logger.Info("Subscribed to flush trigger", "subject", flushSubject)
-
-	// Step 4: Start write worker pool for parallel writes
+	// Step 3: Start write worker pool for parallel writes
 	if s.writeWorkerPool != nil {
 		s.writeWorkerPool.Start()
 		s.logger.Info("Write worker pool started")
 	}
 
-	// Step 5: Start aggregation pipeline (event-driven)
+	// Step 4: Start aggregation pipeline (event-driven)
 	if s.aggPipeline != nil {
 		s.aggPipeline.Start()
 		s.logger.Info("Aggregation pipeline started")
 	}
 
-	// Step 6: Start flush worker pool (event-driven)
+	// Step 5: Start flush worker pool (event-driven)
 	if s.flushPool != nil {
 		s.flushPool.Start()
 		s.logger.Info("Flush worker pool started")
 	}
 
-	// Step 7: Start background compaction worker
+	// Step 6: Start background compaction worker
 	if s.compactionWorker != nil && s.tieredStorage != nil {
 		// Set tiered storage for dynamic engine discovery
 		s.compactionWorker.SetTieredStorage(s.tieredStorage)
@@ -295,21 +288,6 @@ func (s *StorageService) handleWriteMessage(ctx context.Context, subject string,
 			"collection", writeMsg.Collection)
 		return err
 	}
-
-	return nil
-}
-
-// handleFlushTrigger processes admin flush triggers
-func (s *StorageService) handleFlushTrigger(ctx context.Context, subject string, data []byte) error {
-	s.logger.Info("Received flush trigger", "subject", subject)
-
-	// Trigger flush all partitions via flush pool
-	go func() {
-		if s.flushPool != nil {
-			s.flushPool.FlushAll()
-			s.logger.Info("Manual flush completed")
-		}
-	}()
 
 	return nil
 }
@@ -456,9 +434,6 @@ func (s *StorageService) Stop() error {
 	if s.subscriber != nil {
 		if err := s.subscriber.Unsubscribe(writeSubject); err != nil {
 			s.logger.Error("Failed to unsubscribe write subject", "error", err)
-		}
-		if err := s.subscriber.Unsubscribe("soltix.admin.flush.trigger"); err != nil {
-			s.logger.Error("Failed to unsubscribe flush trigger", "error", err)
 		}
 	}
 

@@ -518,25 +518,6 @@ func TestHandleWriteMessage_ValidMessage_ViaDirect(t *testing.T) {
 }
 
 // =============================================================================
-// Tests: handleFlushTrigger
-// =============================================================================
-
-func TestHandleFlushTrigger_NoFlushPool(t *testing.T) {
-	logger := logging.NewDevelopment()
-
-	service := &StorageService{
-		logger:    logger,
-		flushPool: nil,
-	}
-
-	ctx := context.Background()
-	err := service.handleFlushTrigger(ctx, "soltix.admin.flush.trigger", []byte("{}"))
-	if err != nil {
-		t.Fatalf("handleFlushTrigger should not fail with nil pool: %v", err)
-	}
-}
-
-// =============================================================================
 // Tests: replayWAL with mock WAL
 // =============================================================================
 
