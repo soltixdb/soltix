@@ -86,7 +86,19 @@ func Global() *Logger {
 // applyStoredFields applies stored fields to an event
 func (l *Logger) applyStoredFields(e *zerolog.Event) {
 	for k, v := range l.fields {
-		e.Interface(k, v)
+		addField(e, k, v)
+	}
+}
+
+// addField adds a field to a zerolog event, handling error types specially.
+// Errors are serialized as their .Error() string to avoid empty `{}` output
+// that occurs when json.Marshal encounters structs with unexported fields
+// (e.g., *fmt.wrapError, *net.OpError).
+func addField(e *zerolog.Event, key string, value interface{}) {
+	if err, ok := value.(error); ok {
+		e.Str(key, err.Error())
+	} else {
+		e.Interface(key, value)
 	}
 }
 
@@ -96,7 +108,7 @@ func (l *Logger) Debug(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			addField(e, fields[i].(string), fields[i+1])
 		}
 	}
 	e.Msg(msg)
@@ -108,7 +120,7 @@ func (l *Logger) Info(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			addField(e, fields[i].(string), fields[i+1])
 		}
 	}
 	e.Msg(msg)
@@ -120,7 +132,7 @@ func (l *Logger) Warn(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			addField(e, fields[i].(string), fields[i+1])
 		}
 	}
 	e.Msg(msg)
@@ -132,7 +144,7 @@ func (l *Logger) Error(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			addField(e, fields[i].(string), fields[i+1])
 		}
 	}
 	e.Msg(msg)
@@ -144,7 +156,7 @@ func (l *Logger) Fatal(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			addField(e, fields[i].(string), fields[i+1])
 		}
 	}
 	e.Msg(msg)
@@ -156,7 +168,7 @@ func (l *Logger) Panic(msg string, fields ...interface{}) {
 	l.applyStoredFields(e)
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 < len(fields) {
-			e.Interface(fields[i].(string), fields[i+1])
+			addField(e, fields[i].(string), fields[i+1])
 		}
 	}
 	e.Msg(msg)
