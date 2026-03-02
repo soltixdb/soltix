@@ -202,7 +202,7 @@ func (s *NATSSubscriber) deleteConsumerIfExists(streamName, consumerName string)
 	return nil
 }
 
-// Unsubscribe unsubscribes from a subject
+// Unsubscribe unsubscribes from a subject with timeout protection
 func (s *NATSSubscriber) Unsubscribe(subject string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -212,27 +212,53 @@ func (s *NATSSubscriber) Unsubscribe(subject string) error {
 		return fmt.Errorf("not subscribed to subject: %s", subject)
 	}
 
-	if err := sub.Unsubscribe(); err != nil {
-		return fmt.Errorf("failed to unsubscribe from %s: %w", subject, err)
-	}
+	// Unsubscribe can hang if NATS connection is unhealthy
+	// Use goroutine with timeout to prevent blocking forever
+	done := make(chan error, 1)
+	go func() {
+		done <- sub.Unsubscribe()
+	}()
 
-	delete(s.subscriptions, subject)
-	natsLog.Info("Unsubscribed from subject", "subject", subject)
-	return nil
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("failed to unsubscribe from %s: %w", subject, err)
+		}
+		delete(s.subscriptions, subject)
+		natsLog.Info("Unsubscribed from subject", "subject", subject)
+		return nil
+	case <-time.After(3 * time.Second):
+		// Timeout - forcefully remove from tracking
+		delete(s.subscriptions, subject)
+		natsLog.Warn("Unsubscribe timed out, forcefully removed", "subject", subject)
+		return fmt.Errorf("unsubscribe from %s timed out after 3s", subject)
+	}
 }
 
-// Close closes all subscriptions and the connection
+// Close closes all subscriptions and the connection with timeout protection
 func (s *NATSSubscriber) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Unsubscribe from all with timeout per subscription
 	for subject, sub := range s.subscriptions {
-		if err := sub.Unsubscribe(); err != nil {
-			natsLog.Warn("Failed to unsubscribe", "subject", subject, "error", err)
+		done := make(chan error, 1)
+		go func(subscription *nats.Subscription) {
+			done <- subscription.Unsubscribe()
+		}(sub)
+
+		select {
+		case err := <-done:
+			if err != nil {
+				natsLog.Warn("Failed to unsubscribe during close", "subject", subject, "error", err)
+			}
+		case <-time.After(2 * time.Second):
+			natsLog.Warn("Unsubscribe timed out during close", "subject", subject)
 		}
 	}
 	s.subscriptions = make(map[string]*nats.Subscription)
 
+	// Close connection (this is fast, doesn't need timeout)
 	s.conn.Close()
 	natsLog.Info("NATS subscriber closed")
 	return nil

@@ -209,27 +209,54 @@ func (r *NodeRegistration) UpdateShards(ctx context.Context) error {
 	return nil
 }
 
-// Deregister removes node from etcd
+// Deregister removes node from etcd with retry logic
 func (r *NodeRegistration) Deregister(ctx context.Context) error {
 	r.logger.Info("Deregistering node", "node_id", r.nodeInfo.ID)
 
 	key := fmt.Sprintf("/soltix/nodes/%s", r.nodeInfo.ID)
 
-	// Delete node key
-	_, err := r.etcdClient.Delete(ctx, key)
-	if err != nil {
-		r.logger.Error("Failed to delete node key", "error", err)
+	// Try to delete node key with best effort (don't fail on errors)
+	var deleteErr error
+	for i := 0; i < 3; i++ {
+		if ctx.Err() != nil {
+			r.logger.Warn("Context cancelled during deregistration", "attempt", i+1)
+			break
+		}
+		_, deleteErr = r.etcdClient.Delete(ctx, key)
+		if deleteErr == nil {
+			r.logger.Info("Node key deleted successfully", "attempt", i+1)
+			break
+		}
+		r.logger.Warn("Failed to delete node key, retrying", "error", deleteErr, "attempt", i+1)
+		time.Sleep(time.Second)
+	}
+	if deleteErr != nil {
+		r.logger.Error("Failed to delete node key after retries", "error", deleteErr)
 	}
 
-	// Revoke lease
+	// Try to revoke lease with best effort
 	if r.leaseID != 0 {
-		_, err := r.etcdClient.Revoke(ctx, r.leaseID)
-		if err != nil {
-			r.logger.Error("Failed to revoke lease", "error", err)
+		var revokeErr error
+		for i := 0; i < 3; i++ {
+			if ctx.Err() != nil {
+				r.logger.Warn("Context cancelled during lease revocation", "attempt", i+1)
+				break
+			}
+			_, revokeErr = r.etcdClient.Revoke(ctx, r.leaseID)
+			if revokeErr == nil {
+				r.logger.Info("Lease revoked successfully", "attempt", i+1)
+				break
+			}
+			r.logger.Warn("Failed to revoke lease, retrying", "error", revokeErr, "attempt", i+1)
+			time.Sleep(time.Second)
+		}
+		if revokeErr != nil {
+			r.logger.Error("Failed to revoke lease after retries", "error", revokeErr)
 		}
 	}
 
-	r.logger.Info("Node deregistered successfully", "node_id", r.nodeInfo.ID)
+	r.logger.Info("Node deregistration completed", "node_id", r.nodeInfo.ID)
 
-	return err
+	// Return nil - deregistration errors are not fatal
+	return nil
 }

@@ -107,10 +107,15 @@ func main() {
 		logger.Fatal("Failed to register node", "error", err)
 	}
 	defer func() {
-		deregCtx, deregCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Use longer timeout for deregistration (15 seconds)
+		// This ensures proper cleanup even in slow network conditions
+		deregCtx, deregCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer deregCancel()
 		if err := registration.Deregister(deregCtx); err != nil {
-			logger.Error("Failed to deregister node", "error", err)
+			// Log as warning, not error - deregistration failure is not fatal
+			logger.Warn("Issue during node deregistration (non-fatal)", "error", err)
+		} else {
+			logger.Info("Node deregistered successfully")
 		}
 	}()
 

@@ -429,11 +429,24 @@ func (s *StorageService) Stop() error {
 		s.logger.Info("Compaction worker stopped")
 	}
 
-	// Unsubscribe from subjects
+	// Unsubscribe from subjects with timeout protection
 	writeSubject := fmt.Sprintf("soltix.write.node.%s", s.nodeID)
 	if s.subscriber != nil {
-		if err := s.subscriber.Unsubscribe(writeSubject); err != nil {
-			s.logger.Error("Failed to unsubscribe write subject", "error", err)
+		// Use goroutine with timeout to avoid blocking shutdown
+		done := make(chan error, 1)
+		go func() {
+			done <- s.subscriber.Unsubscribe(writeSubject)
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				s.logger.Warn("Failed to unsubscribe write subject (non-fatal)", "error", err)
+			} else {
+				s.logger.Info("Unsubscribed from write subject")
+			}
+		case <-time.After(5 * time.Second):
+			s.logger.Warn("Unsubscribe timed out, continuing shutdown", "subject", writeSubject)
 		}
 	}
 
@@ -454,12 +467,22 @@ func (s *StorageService) Stop() error {
 		}
 	}
 
-	// Close subscriber
+	// Close subscriber with timeout protection
 	if s.subscriber != nil {
-		if err := s.subscriber.Close(); err != nil {
-			s.logger.Error("Failed to close subscriber", "error", err)
-		} else {
-			s.logger.Info("Subscriber closed")
+		done := make(chan error, 1)
+		go func() {
+			done <- s.subscriber.Close()
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				s.logger.Warn("Failed to close subscriber (non-fatal)", "error", err)
+			} else {
+				s.logger.Info("Subscriber closed")
+			}
+		case <-time.After(5 * time.Second):
+			s.logger.Warn("Subscriber close timed out, forcing shutdown")
 		}
 	}
 
