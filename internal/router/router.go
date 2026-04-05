@@ -100,6 +100,7 @@ func New(logger *logging.Logger, metadataManager metadata.Manager,
 		AppName:               "Soltix Router",
 		DisableStartupMessage: true,
 		ErrorHandler:          middleware.ErrorHandler(logger),
+		BodyLimit:             50 * 1024 * 1024, // 50MB max request body
 	})
 
 	Setup(app, logger, metadataManager, queueClient, cfg)
