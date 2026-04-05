@@ -1573,3 +1573,237 @@ func TestWriteMonthly_ViaCompatLayer(t *testing.T) {
 		t.Fatalf("WriteMonthly failed: %v", err)
 	}
 }
+
+// =============================================================================
+// NaN/Inf guard tests (#25)
+// =============================================================================
+
+func TestIsValidFloat(t *testing.T) {
+	tests := []struct {
+		name  string
+		value float64
+		want  bool
+	}{
+		{"normal positive", 42.5, true},
+		{"normal negative", -10.0, true},
+		{"zero", 0.0, true},
+		{"very large", 1e308, true},
+		{"very small", 1e-308, true},
+		{"NaN", math.NaN(), false},
+		{"positive Inf", math.Inf(1), false},
+		{"negative Inf", math.Inf(-1), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidFloat(tt.value); got != tt.want {
+				t.Errorf("isValidFloat(%v) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewAggregatedField_NaN(t *testing.T) {
+	af := NewAggregatedField(math.NaN())
+	if af != nil {
+		t.Error("NewAggregatedField(NaN) should return nil")
+	}
+}
+
+func TestNewAggregatedField_Inf(t *testing.T) {
+	af := NewAggregatedField(math.Inf(1))
+	if af != nil {
+		t.Error("NewAggregatedField(+Inf) should return nil")
+	}
+}
+
+func TestNewAggregatedField_NegInf(t *testing.T) {
+	af := NewAggregatedField(math.Inf(-1))
+	if af != nil {
+		t.Error("NewAggregatedField(-Inf) should return nil")
+	}
+}
+
+func TestNewAggregatedField_ValidValue(t *testing.T) {
+	af := NewAggregatedField(42.5)
+	if af == nil {
+		t.Fatal("NewAggregatedField(42.5) should not return nil")
+	}
+	if af.Sum != 42.5 || af.Count != 1 || af.Avg != 42.5 {
+		t.Errorf("unexpected values: sum=%v count=%v avg=%v", af.Sum, af.Count, af.Avg)
+	}
+}
+
+func TestNewAggregatedFieldWithTime_NaN(t *testing.T) {
+	af := NewAggregatedFieldWithTime(math.NaN(), time.Now())
+	if af != nil {
+		t.Error("NewAggregatedFieldWithTime(NaN, ...) should return nil")
+	}
+}
+
+func TestAddValueWithTime_SkipsNaN(t *testing.T) {
+	af := NewAggregatedField(10.0)
+	if af == nil {
+		t.Fatal("expected non-nil")
+	}
+
+	af.AddValueWithTime(math.NaN(), time.Now())
+
+	if af.Count != 1 {
+		t.Errorf("Count should still be 1 after adding NaN, got %d", af.Count)
+	}
+	if af.Sum != 10.0 {
+		t.Errorf("Sum should still be 10.0 after adding NaN, got %v", af.Sum)
+	}
+}
+
+func TestAddValueWithTime_SkipsInf(t *testing.T) {
+	af := NewAggregatedField(10.0)
+	if af == nil {
+		t.Fatal("expected non-nil")
+	}
+
+	af.AddValueWithTime(math.Inf(1), time.Now())
+	af.AddValueWithTime(math.Inf(-1), time.Now())
+
+	if af.Count != 1 {
+		t.Errorf("Count should still be 1 after adding Inf, got %d", af.Count)
+	}
+}
+
+func TestAddValueWithTime_AcceptsValidAfterSkip(t *testing.T) {
+	af := NewAggregatedField(10.0)
+	if af == nil {
+		t.Fatal("expected non-nil")
+	}
+
+	af.AddValueWithTime(math.NaN(), time.Now())  // skipped
+	af.AddValueWithTime(20.0, time.Now())         // accepted
+
+	if af.Count != 2 {
+		t.Errorf("Count = %d, want 2", af.Count)
+	}
+	if af.Sum != 30.0 {
+		t.Errorf("Sum = %v, want 30.0", af.Sum)
+	}
+	if af.Avg != 15.0 {
+		t.Errorf("Avg = %v, want 15.0", af.Avg)
+	}
+}
+
+func TestMerge_SkipsNil(t *testing.T) {
+	af := NewAggregatedField(10.0)
+	af.Merge(nil)
+
+	if af.Count != 1 {
+		t.Errorf("Count = %d, want 1 after Merge(nil)", af.Count)
+	}
+}
+
+func TestMerge_SkipsCorruptedNaN(t *testing.T) {
+	af := NewAggregatedField(10.0)
+
+	corrupted := &AggregatedField{
+		Count:      5,
+		Sum:        math.NaN(),
+		Avg:        math.NaN(),
+		Min:        0,
+		Max:        100,
+		SumSquares: 500,
+	}
+
+	af.Merge(corrupted)
+
+	if af.Count != 1 {
+		t.Errorf("Count = %d, want 1 after Merge(corrupted)", af.Count)
+	}
+	if af.Sum != 10.0 {
+		t.Errorf("Sum = %v, want 10.0 after Merge(corrupted)", af.Sum)
+	}
+}
+
+func TestMerge_SkipsCorruptedSumSquares(t *testing.T) {
+	af := NewAggregatedField(10.0)
+
+	corrupted := &AggregatedField{
+		Count:      5,
+		Sum:        50,
+		Avg:        10,
+		Min:        5,
+		Max:        15,
+		SumSquares: math.Inf(1),
+	}
+
+	af.Merge(corrupted)
+
+	if af.Count != 1 {
+		t.Errorf("Count = %d, want 1 — SumSquares=Inf should be rejected", af.Count)
+	}
+}
+
+func TestMerge_AcceptsValidField(t *testing.T) {
+	af := NewAggregatedField(10.0)
+
+	other := &AggregatedField{
+		Count:      2,
+		Sum:        30,
+		Avg:        15,
+		Min:        5,
+		Max:        25,
+		SumSquares: 500,
+	}
+
+	af.Merge(other)
+
+	if af.Count != 3 {
+		t.Errorf("Count = %d, want 3", af.Count)
+	}
+	if af.Sum != 40.0 {
+		t.Errorf("Sum = %v, want 40.0", af.Sum)
+	}
+}
+
+func TestAggregateRawDataPoints_SkipsNaNFields(t *testing.T) {
+	points := []*RawDataPoint{
+		{Time: time.Now(), Fields: map[string]interface{}{"temp": 25.0, "bad": math.NaN()}},
+		{Time: time.Now(), Fields: map[string]interface{}{"temp": 30.0, "bad": math.Inf(1)}},
+	}
+
+	result, err := AggregateRawDataPoints("dev1", points, AggregationHourly)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// "temp" should be aggregated normally
+	tempField, ok := result.Fields["temp"]
+	if !ok {
+		t.Fatal("expected 'temp' field")
+	}
+	if tempField.Count != 2 {
+		t.Errorf("temp.Count = %d, want 2", tempField.Count)
+	}
+	if tempField.Sum != 55.0 {
+		t.Errorf("temp.Sum = %v, want 55.0", tempField.Sum)
+	}
+
+	// "bad" should not exist (all values were NaN/Inf)
+	if _, ok := result.Fields["bad"]; ok {
+		t.Error("'bad' field should not exist — all values were NaN/Inf")
+	}
+}
+
+func TestAggregateRawDataPoints_AllFieldsInvalid(t *testing.T) {
+	points := []*RawDataPoint{
+		{Time: time.Now(), Fields: map[string]interface{}{"x": math.NaN()}},
+		{Time: time.Now(), Fields: map[string]interface{}{"x": math.Inf(-1)}},
+	}
+
+	result, err := AggregateRawDataPoints("dev1", points, AggregationHourly)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Fields) != 0 {
+		t.Errorf("expected 0 fields when all values are invalid, got %d", len(result.Fields))
+	}
+}

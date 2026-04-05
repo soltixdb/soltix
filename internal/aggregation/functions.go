@@ -66,7 +66,11 @@ func AggregateRawDataPoints(deviceID string, points []*RawDataPoint, level Aggre
 			}
 
 			if agg.Fields[fieldName] == nil {
-				agg.Fields[fieldName] = NewAggregatedFieldWithTime(value, point.Time)
+				af := NewAggregatedFieldWithTime(value, point.Time)
+				if af == nil {
+					continue // Skip NaN/Inf values
+				}
+				agg.Fields[fieldName] = af
 			} else {
 				agg.Fields[fieldName].AddValueWithTime(value, point.Time)
 			}
@@ -107,6 +111,13 @@ func AggregateAggregatedPoints(deviceID string, points []*AggregatedPoint, level
 	// Merge all fields
 	for _, point := range points {
 		for fieldName, field := range point.Fields {
+			if field == nil {
+				continue
+			}
+			// Skip corrupted fields with NaN/Inf
+			if !isValidFloat(field.Sum) || !isValidFloat(field.Min) || !isValidFloat(field.Max) || !isValidFloat(field.SumSquares) || !isValidFloat(field.Avg) {
+				continue
+			}
 			if agg.Fields[fieldName] == nil {
 				// Deep copy
 				agg.Fields[fieldName] = &AggregatedField{

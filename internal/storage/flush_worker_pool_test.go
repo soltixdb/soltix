@@ -1065,3 +1065,126 @@ func TestFlushMockMainStorage(t *testing.T) {
 		t.Errorf("Expected 2 points in batch, got %d", len(batches[0]))
 	}
 }
+
+// =============================================================================
+// walEntryToDataPoint timestamp parsing tests (#26)
+// =============================================================================
+
+func TestWalEntryToDataPoint_PrefersTimeString(t *testing.T) {
+	// entry.Time (RFC3339) should be preferred over entry.Timestamp
+	entry := &wal.Entry{
+		Database:   "testdb",
+		Collection: "metrics",
+		ID:         "device1",
+		Time:       "2026-03-15T10:30:00Z",
+		Timestamp:  1234567890000000000, // Different timestamp (nanos)
+		Fields:     map[string]interface{}{"temp": 25.0},
+	}
+
+	result := walEntryToDataPoint(entry)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	expected, _ := time.Parse(time.RFC3339, "2026-03-15T10:30:00Z")
+	if !result.Time.Equal(expected) {
+		t.Errorf("Time = %v, want %v (should prefer entry.Time string)", result.Time, expected)
+	}
+}
+
+func TestWalEntryToDataPoint_RFC3339Nano(t *testing.T) {
+	entry := &wal.Entry{
+		Database:   "testdb",
+		Collection: "metrics",
+		ID:         "device1",
+		Time:       "2026-03-15T10:30:00.123456789Z",
+		Fields:     map[string]interface{}{"temp": 25.0},
+	}
+
+	result := walEntryToDataPoint(entry)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	expected, _ := time.Parse(time.RFC3339Nano, "2026-03-15T10:30:00.123456789Z")
+	if !result.Time.Equal(expected) {
+		t.Errorf("Time = %v, want %v", result.Time, expected)
+	}
+}
+
+func TestWalEntryToDataPoint_FallbackToTimestamp(t *testing.T) {
+	// When Time string is empty, fall back to Timestamp (nanos)
+	now := time.Now()
+	entry := &wal.Entry{
+		Database:   "testdb",
+		Collection: "metrics",
+		ID:         "device1",
+		Time:       "", // Empty
+		Timestamp:  now.UnixNano(),
+		Fields:     map[string]interface{}{"temp": 25.0},
+	}
+
+	result := walEntryToDataPoint(entry)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	if result.Time.UnixNano() != now.UnixNano() {
+		t.Errorf("Time = %v, want %v (should use Timestamp fallback)", result.Time.UnixNano(), now.UnixNano())
+	}
+}
+
+func TestWalEntryToDataPoint_InvalidTimeString_FallbackTimestamp(t *testing.T) {
+	// Invalid Time string but valid Timestamp → use Timestamp
+	now := time.Now()
+	entry := &wal.Entry{
+		Database:   "testdb",
+		Collection: "metrics",
+		ID:         "device1",
+		Time:       "not-a-valid-time",
+		Timestamp:  now.UnixNano(),
+		Fields:     map[string]interface{}{"temp": 25.0},
+	}
+
+	result := walEntryToDataPoint(entry)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	if result.Time.UnixNano() != now.UnixNano() {
+		t.Errorf("Time = %v, want %v", result.Time.UnixNano(), now.UnixNano())
+	}
+}
+
+func TestWalEntryToDataPoint_NoValidTimestamp_ReturnsNil(t *testing.T) {
+	// No Time string and Timestamp = 0 → should return nil
+	entry := &wal.Entry{
+		Database:   "testdb",
+		Collection: "metrics",
+		ID:         "device1",
+		Time:       "",
+		Timestamp:  0,
+		Fields:     map[string]interface{}{"temp": 25.0},
+	}
+
+	result := walEntryToDataPoint(entry)
+	if result != nil {
+		t.Errorf("expected nil when no valid timestamp, got Time=%v", result.Time)
+	}
+}
+
+func TestWalEntryToDataPoint_InvalidTimeAndZeroTimestamp_ReturnsNil(t *testing.T) {
+	entry := &wal.Entry{
+		Database:   "testdb",
+		Collection: "metrics",
+		ID:         "device1",
+		Time:       "garbage",
+		Timestamp:  0,
+		Fields:     map[string]interface{}{"temp": 25.0},
+	}
+
+	result := walEntryToDataPoint(entry)
+	if result != nil {
+		t.Errorf("expected nil for invalid time + zero timestamp, got %v", result.Time)
+	}
+}
