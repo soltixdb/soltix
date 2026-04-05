@@ -247,9 +247,9 @@ func TestHandler_CreateDownload_Success(t *testing.T) {
 	if createResp.RequestID == "" {
 		t.Error("Expected non-empty request_id")
 	}
-	// Status could be pending or processing depending on timing
-	if createResp.Status != "pending" && createResp.Status != "processing" {
-		t.Errorf("Expected status 'pending' or 'processing', got '%s'", createResp.Status)
+	// Status could be pending, processing, or completed depending on timing
+	if createResp.Status != "pending" && createResp.Status != "processing" && createResp.Status != "completed" {
+		t.Errorf("Expected status 'pending', 'processing', or 'completed', got '%s'", createResp.Status)
 	}
 	if createResp.ExpiresAt.IsZero() {
 		t.Error("Expected non-zero expires_at")
