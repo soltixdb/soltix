@@ -480,7 +480,7 @@ func TestWriteWorkerPool_TimezonePartitioning(t *testing.T) {
 func TestWriteWorkerPool_DefaultTimezoneUTC(t *testing.T) {
 	logger := logging.NewDevelopment()
 	memStore := NewMemoryStore(5*time.Minute, 1000, logger)
-	defer memStore.Close()
+	defer func() { _ = memStore.Close() }()
 
 	p := NewWriteWorkerPool(
 		logger,
