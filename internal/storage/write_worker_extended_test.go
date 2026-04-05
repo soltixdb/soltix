@@ -18,7 +18,7 @@ func TestWriteWorkerPool_Submit_ValidMessage(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -44,7 +44,7 @@ func TestWriteWorkerPool_Submit_BadTimeParseFails(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -67,7 +67,7 @@ func TestWriteWorkerPool_Submit_MultiplePartitions(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -93,7 +93,7 @@ func TestWriteWorkerPool_Submit_ReuseWorker(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -133,7 +133,7 @@ func TestWriteWorkerPool_SubmitSync_ValidMessage(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -156,7 +156,7 @@ func TestWriteWorkerPool_SubmitSync_BadTimeParseFails(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -179,7 +179,7 @@ func TestWriteWorkerPool_SubmitSync_MultipleSync(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -206,7 +206,7 @@ func TestWriteWorkerPool_StopDrainsWorkers(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 
 	// Submit some messages to create workers
@@ -236,7 +236,7 @@ func TestWriteWorkerPool_Stats_Empty(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -251,7 +251,7 @@ func TestWriteWorkerPool_Stats_WithWorkers(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -613,7 +613,7 @@ func TestWriteWorkerPool_DoCleanup_RemovesIdleWorkers(t *testing.T) {
 	mockWAL := newMockPartitionedWriter()
 	memStore := NewMemoryStore(time.Hour, 1000, logger)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, nil, nil)
 	pool.idleTimeout = 10 * time.Millisecond // very short for testing
 	pool.Start()
 	defer pool.Stop()
@@ -679,7 +679,7 @@ func TestWriteWorkerPool_WithFlushPoolNotification(t *testing.T) {
 		nil,
 	)
 
-	pool := NewWriteWorkerPool(logger, mockWAL, memStore, flushPool)
+	pool := NewWriteWorkerPool(logger, mockWAL, memStore, flushPool, nil)
 	pool.Start()
 	defer pool.Stop()
 

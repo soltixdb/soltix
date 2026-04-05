@@ -22,6 +22,7 @@ type Handler struct {
 	shardRouter      *coordinator.ShardRouter
 	queryCoordinator *coordinator.QueryCoordinator
 	processor        *processing.Processor
+	metadataSem      chan struct{} // Semaphore to limit concurrent metadata tracking goroutines
 	// Services
 	queryService       *services.QueryService
 	streamQueryService *services.StreamQueryService
@@ -51,6 +52,7 @@ func New(logger *logging.Logger, metadataManager metadata.Manager,
 		shardRouter:        shardRouter,
 		queryCoordinator:   queryCoordinator,
 		processor:          processor,
+		metadataSem:        make(chan struct{}, 100), // Limit to 100 concurrent metadata goroutines
 		queryService:       queryService,
 		streamQueryService: streamQueryService,
 		forecastService:    forecastService,

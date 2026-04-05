@@ -145,13 +145,20 @@ func (af *AggregatedField) AddValueWithTime(value float64, observedAt time.Time)
 	af.Avg = af.Sum / float64(af.Count)
 }
 
-// Variance calculates the variance of the aggregated values
+// Variance calculates the variance of the aggregated values.
+// Uses the E[X²] - (E[X])² formula with a guard against negative results
+// from floating-point cancellation.
 func (af *AggregatedField) Variance() float64 {
 	if af.Count <= 1 {
 		return 0
 	}
 	// Var = E[X²] - (E[X])²
-	return (af.SumSquares / float64(af.Count)) - (af.Avg * af.Avg)
+	v := (af.SumSquares / float64(af.Count)) - (af.Avg * af.Avg)
+	// Clamp to zero — floating-point cancellation can produce small negatives
+	if v < 0 {
+		return 0
+	}
+	return v
 }
 
 // StdDev calculates the standard deviation

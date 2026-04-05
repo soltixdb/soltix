@@ -126,6 +126,7 @@ func TestHandler_Write_ValidationErrors(t *testing.T) {
 				metadataManager: mockMeta,
 				queuePublisher:  mockQueue,
 				shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 			}
 
 			app := fiber.New()
@@ -304,6 +305,7 @@ func TestHandler_WriteBatch_ValidationErrors(t *testing.T) {
 				metadataManager: mockMeta,
 				queuePublisher:  mockQueue,
 				shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 			}
 
 			app := fiber.New()
@@ -438,6 +440,7 @@ func TestHandler_WriteBatch_Optimized_Success(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -528,6 +531,7 @@ func TestHandler_WriteBatch_RouteCache(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -591,6 +595,7 @@ func TestHandler_WriteBatch_UniqueDeviceTracking(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -669,6 +674,7 @@ func TestHandler_WriteBatch_EarliestTimestamp(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -708,6 +714,7 @@ func TestTrackMetadataAsync(t *testing.T) {
 	handler := &Handler{
 		metadataManager: mockMeta,
 		logger:          logger,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	// Create database and collection

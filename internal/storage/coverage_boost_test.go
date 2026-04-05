@@ -522,7 +522,7 @@ func TestWriteWorkerPool_Submit_InvalidTime(t *testing.T) {
 	memStore := NewMemoryStore(time.Hour, 10000, logger)
 	defer func() { _ = memStore.Close() }()
 
-	pool := NewWriteWorkerPool(logger, nil, memStore, nil)
+	pool := NewWriteWorkerPool(logger, nil, memStore, nil, nil)
 	pool.Start()
 	defer pool.Stop()
 
@@ -546,7 +546,7 @@ func TestWriteWorkerPool_SubmitSync_InvalidTime(t *testing.T) {
 	memStore := NewMemoryStore(time.Hour, 10000, logger)
 	defer func() { _ = memStore.Close() }()
 
-	pool := NewWriteWorkerPool(logger, nil, memStore, nil)
+	pool := NewWriteWorkerPool(logger, nil, memStore, nil, nil)
 
 	msg := WriteMessage{
 		Database:   "db",
