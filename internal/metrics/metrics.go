@@ -106,7 +106,15 @@ var (
 		Help:      "Total number of data points flushed to storage.",
 	})
 
-	// StorageWriteWorkerQueueSize tracks pending writes per worker.
+	// StorageFlushErrors counts flush failures.
+	StorageFlushErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "soltix",
+		Subsystem: "storage",
+		Name:      "flush_errors_total",
+		Help:      "Total number of flush operation failures.",
+	})
+
+	// StorageWriteWorkerQueueSize tracks total pending writes across all workers.
 	StorageWriteWorkerQueueSize = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "soltix",
 		Subsystem: "storage",

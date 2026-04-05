@@ -261,6 +261,7 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 			"group_id", groupAssignment.GroupID,
 			"total_nodes", len(nodes),
 			"failed_nodes", failedNodes)
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "failed").Inc()
 		return c.Status(fiber.StatusServiceUnavailable).JSON(models.ErrorResponse{
 			Error: models.ErrorDetail{
 				Code:    "QUEUE_UNAVAILABLE",
@@ -286,6 +287,7 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 		response["status"] = "partial"
 		response["failed_nodes"] = failedNodes
 		response["message"] = fmt.Sprintf("Write queued to %d/%d nodes. Some replicas may be missing.", len(successNodes), len(nodes))
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "partial").Inc()
 		return c.Status(fiber.StatusAccepted).JSON(response)
 	}
 
@@ -533,6 +535,7 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 			"collection", collection,
 			"total_points", len(req.Points),
 			"failed_nodes", failedNodes)
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "failed").Inc()
 		return c.Status(fiber.StatusServiceUnavailable).JSON(models.ErrorResponse{
 			Error: models.ErrorDetail{
 				Code:    "QUEUE_UNAVAILABLE",
@@ -571,11 +574,12 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 		response["status"] = "partial"
 		response["failed_nodes"] = failedNodes
 		response["message"] = fmt.Sprintf("Batch write queued to %d/%d nodes. Some replicas may be missing.", len(successNodes), len(nodeMessages))
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "partial").Inc()
 		return c.Status(fiber.StatusAccepted).JSON(response)
 	}
 
 	metrics.RouterBatchSize.Observe(float64(len(req.Points)))
-	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Add(float64(len(req.Points)))
+	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Inc()
 	response["status"] = "accepted"
 	response["message"] = "Batch write request accepted and queued for processing"
 	return c.Status(fiber.StatusAccepted).JSON(response)

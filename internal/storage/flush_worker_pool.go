@@ -563,6 +563,8 @@ func (w *FlushWorker) flush() {
 
 	// Write to storage
 	if err := w.storage.WriteBatch(dataPoints); err != nil {
+		metrics.StorageFlushErrors.Inc()
+		metrics.StorageFlushDuration.Observe(time.Since(startTime).Seconds())
 		w.logger.Error("Failed to write batch to storage",
 			"partition", w.config.Key,
 			"points", len(dataPoints),
