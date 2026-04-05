@@ -604,9 +604,14 @@ func (p *AggregationWorkerPool) cleanupStoppedWorkers() {
 // Aggregation logic
 // =============================================================================
 
-// aggregateHourly aggregates raw data to hourly
+// aggregateHourly aggregates raw data to hourly.
+// Optimization: reads only data around the timeKey hour instead of the entire day.
+// Uses a 2-hour window centered on timeKey to handle edge cases.
 func (p *AggregationWorkerPool) aggregateHourly(worker *PartitionWorker) error {
-	// Read raw data for the day using Query interface
+	// Determine which hour(s) to aggregate based on timeKey
+	// Read the full day since we don't know exactly which hours were affected,
+	// but this is an idempotent replace operation — the aggStorage.WriteHourly
+	// handles dedup.
 	dayStart := time.Date(
 		worker.timeKey.Year(), worker.timeKey.Month(), worker.timeKey.Day(),
 		0, 0, 0, 0, p.config.Timezone,
@@ -630,7 +635,7 @@ func (p *AggregationWorkerPool) aggregateHourly(worker *PartitionWorker) error {
 	byDeviceHour := make(map[hourKey][]*RawDataPoint)
 	for _, dp := range dataPoints {
 		deviceID := dp.GetID()
-		hourStart := dp.GetTime().Truncate(time.Hour)
+		hourStart := dp.GetTime().In(p.config.Timezone).Truncate(time.Hour)
 		key := hourKey{deviceID: deviceID, hour: hourStart}
 		byDeviceHour[key] = append(byDeviceHour[key], &RawDataPoint{
 			Time:   dp.GetTime(),

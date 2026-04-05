@@ -612,21 +612,39 @@ func (w *FlushWorker) GetStats() map[string]interface{} {
 	}
 }
 
-// walEntryToDataPoint converts a WAL entry to a DataPoint
+// walEntryToDataPoint converts a WAL entry to a DataPoint.
+// Tries entry.Time (RFC3339/RFC3339Nano string) first, falls back to entry.Timestamp (nanos).
 func walEntryToDataPoint(entry *wal.Entry) *DataPoint {
 	if entry == nil {
 		return nil
 	}
 
-	// Parse timestamp from entry
-	ts := time.Unix(0, entry.Timestamp)
+	// Parse timestamp: try Time string first (more reliable), fallback to Timestamp int64
+	var ts time.Time
+	if entry.Time != "" {
+		var err error
+		ts, err = time.Parse(time.RFC3339Nano, entry.Time)
+		if err != nil {
+			// Fallback to RFC3339
+			ts, err = time.Parse(time.RFC3339, entry.Time)
+			if err != nil && entry.Timestamp > 0 {
+				ts = time.Unix(0, entry.Timestamp)
+			} else if err != nil {
+				return nil // Cannot determine timestamp
+			}
+		}
+	} else if entry.Timestamp > 0 {
+		ts = time.Unix(0, entry.Timestamp)
+	} else {
+		return nil // No valid timestamp
+	}
 
 	return &DataPoint{
 		ID:         entry.ID,
 		Database:   entry.Database,
 		Collection: entry.Collection,
 		Time:       ts,
-		Fields:     entry.Fields, // Already map[string]interface{}
-		InsertedAt: time.Now(),   // Set InsertedAt for last-write-wins logic
+		Fields:     entry.Fields,
+		InsertedAt: time.Now(),
 	}
 }

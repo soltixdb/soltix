@@ -29,13 +29,24 @@ type AggregatedField struct {
 	SumSquares float64 // For variance calculation
 }
 
-// NewAggregatedField creates a new aggregated field from a single value
+// isValidFloat returns true if the value is a finite number (not NaN or Inf).
+func isValidFloat(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+// NewAggregatedField creates a new aggregated field from a single value.
+// Returns nil if the value is NaN or Inf.
 func NewAggregatedField(value float64) *AggregatedField {
 	return NewAggregatedFieldWithTime(value, time.Time{})
 }
 
-// NewAggregatedFieldWithTime creates a new aggregated field from a single value and its timestamp
+// NewAggregatedFieldWithTime creates a new aggregated field from a single value and its timestamp.
+// Returns nil if the value is NaN or Inf.
 func NewAggregatedFieldWithTime(value float64, observedAt time.Time) *AggregatedField {
+	if !isValidFloat(value) {
+		return nil
+	}
+
 	ts := observedAt.UnixNano()
 	if observedAt.IsZero() {
 		ts = 0
@@ -63,8 +74,17 @@ func mergeExtremaTime(current, candidate int64) int64 {
 	return current
 }
 
-// Merge combines another aggregated field into this one
+// Merge combines another aggregated field into this one.
+// Skips if other is nil or contains NaN/Inf values.
 func (af *AggregatedField) Merge(other *AggregatedField) {
+	if other == nil {
+		return
+	}
+	// Guard against corrupted aggregated fields
+	if !isValidFloat(other.Sum) || !isValidFloat(other.Min) || !isValidFloat(other.Max) {
+		return
+	}
+
 	af.Count += other.Count
 	af.Sum += other.Sum
 	af.SumSquares += other.SumSquares
@@ -93,8 +113,13 @@ func (af *AggregatedField) AddValue(value float64) {
 	af.AddValueWithTime(value, time.Time{})
 }
 
-// AddValueWithTime adds a single value and timestamp to the aggregation
+// AddValueWithTime adds a single value and timestamp to the aggregation.
+// Silently skips NaN and Inf values to prevent corruption.
 func (af *AggregatedField) AddValueWithTime(value float64, observedAt time.Time) {
+	if !isValidFloat(value) {
+		return
+	}
+
 	ts := observedAt.UnixNano()
 	if observedAt.IsZero() {
 		ts = 0
