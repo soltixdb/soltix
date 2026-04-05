@@ -19,6 +19,7 @@ type WriteWorkerPool struct {
 	memStore    *MemoryStore
 	flushPool   *FlushWorkerPool // Event-driven flush pool
 	memMaxAge   time.Duration    // Max age for data to be stored in memory
+	timezone    *time.Location   // Configured timezone for date partitioning
 	bufferSize  int              // Channel buffer size per worker
 	idleTimeout time.Duration    // Worker idle timeout before shutdown
 	stopCh      chan struct{}
@@ -57,16 +58,21 @@ func NewWriteWorkerPool(
 	walWriter wal.PartitionedWriter,
 	memStore *MemoryStore,
 	flushPool *FlushWorkerPool,
+	timezone *time.Location,
 ) *WriteWorkerPool {
+	if timezone == nil {
+		timezone = time.UTC
+	}
 	return &WriteWorkerPool{
 		workers:     make(map[string]*WriteWorker),
 		logger:      logger,
 		wal:         walWriter,
 		memStore:    memStore,
 		flushPool:   flushPool,
-		memMaxAge:   memStore.GetMaxAge(), // Get max age from memory store
-		bufferSize:  1000,                 // Buffer 1000 writes per worker
-		idleTimeout: 5 * time.Minute,      // Shutdown idle workers after 5 min
+		memMaxAge:   memStore.GetMaxAge(),
+		timezone:    timezone,
+		bufferSize:  1000,
+		idleTimeout: 5 * time.Minute,
 		stopCh:      make(chan struct{}),
 	}
 }
@@ -106,8 +112,8 @@ func (p *WriteWorkerPool) Submit(msg WriteMessage) error {
 		return fmt.Errorf("failed to parse time: %w", err)
 	}
 
-	// Generate partition key: database:collection:YYYY-MM-DD
-	dateStr := timeParsed.Format("2006-01-02")
+	// Generate partition key using configured timezone for correct day boundary
+	dateStr := timeParsed.In(p.timezone).Format("2006-01-02")
 	partitionKey := fmt.Sprintf("%s:%s:%s", msg.Database, msg.Collection, dateStr)
 
 	// Get or create worker for this partition
@@ -184,8 +190,8 @@ func (p *WriteWorkerPool) SubmitSync(msg WriteMessage) error {
 		return fmt.Errorf("failed to parse time: %w", err)
 	}
 
-	// Generate partition key: database:collection:YYYY-MM-DD
-	dateStr := timeParsed.Format("2006-01-02")
+	// Generate partition key using configured timezone for correct day boundary
+	dateStr := timeParsed.In(p.timezone).Format("2006-01-02")
 	partitionKey := fmt.Sprintf("%s:%s:%s", msg.Database, msg.Collection, dateStr)
 
 	// Get or create worker

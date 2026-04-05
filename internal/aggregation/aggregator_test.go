@@ -1807,3 +1807,45 @@ func TestAggregateRawDataPoints_AllFieldsInvalid(t *testing.T) {
 		t.Errorf("expected 0 fields when all values are invalid, got %d", len(result.Fields))
 	}
 }
+
+// =============================================================================
+// Variance numerical stability tests (#30)
+// =============================================================================
+
+func TestVariance_ClampsNegative(t *testing.T) {
+	// Simulate catastrophic cancellation: large values close together
+	af := &AggregatedField{
+		Count:      2,
+		Sum:        2000000.3, // 1000000.1 + 1000000.2
+		Avg:        1000000.15,
+		Min:        1000000.1,
+		Max:        1000000.2,
+		SumSquares: 2000000300000.05, // Approximate, may cause negative variance
+	}
+
+	v := af.Variance()
+	if v < 0 {
+		t.Errorf("Variance should not be negative, got %v", v)
+	}
+}
+
+func TestVariance_SingleValue(t *testing.T) {
+	af := NewAggregatedField(42.0)
+	if af.Variance() != 0 {
+		t.Errorf("Variance of single value should be 0, got %v", af.Variance())
+	}
+}
+
+func TestVariance_NormalCase(t *testing.T) {
+	af := NewAggregatedField(10.0)
+	af.AddValue(20.0)
+
+	v := af.Variance()
+	if v < 0 {
+		t.Errorf("Variance should not be negative, got %v", v)
+	}
+	// E[X²] = (100+400)/2 = 250, (E[X])² = 15² = 225, Var = 25
+	if math.Abs(v-25.0) > 0.001 {
+		t.Errorf("Variance = %v, want ~25.0", v)
+	}
+}

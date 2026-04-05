@@ -314,7 +314,7 @@ func TestNewWriteWorkerPool(t *testing.T) {
 	defer func() { _ = memStore.Close() }()
 
 	// Create pool without WAL (testing config only)
-	pool := NewWriteWorkerPool(logger, nil, memStore, nil)
+	pool := NewWriteWorkerPool(logger, nil, memStore, nil, nil)
 
 	if pool == nil {
 		t.Fatal("Expected non-nil pool")
@@ -339,7 +339,7 @@ func TestWriteWorkerPool_StartStop(t *testing.T) {
 	memStore := NewMemoryStore(time.Hour, 10000, logger)
 	defer func() { _ = memStore.Close() }()
 
-	pool := NewWriteWorkerPool(logger, nil, memStore, nil)
+	pool := NewWriteWorkerPool(logger, nil, memStore, nil, nil)
 
 	// Start the pool
 	pool.Start()
@@ -453,5 +453,45 @@ func TestWriteMessage_Fields(t *testing.T) {
 	}
 	if msg.Fields["temp"] != 25.0 {
 		t.Errorf("Fields[temp] = %v, expected 25.0", msg.Fields["temp"])
+	}
+}
+
+// =============================================================================
+// WriteWorker timezone-aware date partitioning tests (#28)
+// =============================================================================
+
+func TestWriteWorkerPool_TimezonePartitioning(t *testing.T) {
+	// Test that date partitioning uses configured timezone.
+	// Use a fixed JST zone to avoid depending on external tzdata.
+	jst := time.FixedZone("JST", 9*60*60)
+
+	pool := &WriteWorkerPool{
+		timezone: jst,
+	}
+
+	// 2026-01-15T23:30:00Z (UTC) = 2026-01-16T08:30:00+09:00 (JST)
+	utcTime, _ := time.Parse(time.RFC3339, "2026-01-15T23:30:00Z")
+	dateStr := utcTime.In(pool.timezone).Format("2006-01-02")
+
+	if dateStr != "2026-01-16" {
+		t.Errorf("Expected date 2026-01-16 in JST, got %s", dateStr)
+	}
+}
+
+func TestWriteWorkerPool_DefaultTimezoneUTC(t *testing.T) {
+	logger := logging.NewDevelopment()
+	memStore := NewMemoryStore(5*time.Minute, 1000, logger)
+	defer func() { _ = memStore.Close() }()
+
+	p := NewWriteWorkerPool(
+		logger,
+		nil, // wal - not used in this test
+		memStore,
+		nil, // flushPool
+		nil, // timezone (should default to UTC)
+	)
+
+	if p.timezone != time.UTC {
+		t.Errorf("Expected UTC default timezone, got %v", p.timezone)
 	}
 }

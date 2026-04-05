@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/soltixdb/soltix/internal/logging"
 	"github.com/soltixdb/soltix/internal/metadata"
 	"github.com/soltixdb/soltix/internal/models"
+	"github.com/soltixdb/soltix/internal/utils"
 )
 
 func TestHandler_Write_ValidationErrors(t *testing.T) {
@@ -126,6 +128,7 @@ func TestHandler_Write_ValidationErrors(t *testing.T) {
 				metadataManager: mockMeta,
 				queuePublisher:  mockQueue,
 				shardRouter:     shardRouter,
+				metadataSem:     make(chan struct{}, 100),
 			}
 
 			app := fiber.New()
@@ -280,6 +283,31 @@ func TestHandler_WriteBatch_ValidationErrors(t *testing.T) {
 			expectedStatus: fiber.StatusNotFound,
 			expectedCode:   "COLLECTION_NOT_FOUND",
 		},
+		{
+			name:     "batch_too_large",
+			dbName:   "testdb",
+			collName: "testcoll",
+			requestBody: func() models.WriteBatchRequest {
+				// Create a batch exceeding MaxBatchSize
+				points := make([]map[string]interface{}, utils.MaxBatchSize+1)
+				for i := range points {
+					points[i] = map[string]interface{}{
+						"time": "2024-01-01T12:00:00Z",
+						"id":   fmt.Sprintf("device%d", i),
+						"temp": 25.0,
+					}
+				}
+				return models.WriteBatchRequest{Points: points}
+			}(),
+			setupMock: func(mm *MockMetadataManager) {
+				mm.databases["testdb"] = &metadata.Database{Name: "testdb", CreatedAt: time.Now()}
+				mm.collections["testdb"] = map[string]*metadata.Collection{
+					"testcoll": {Name: "testcoll", CreatedAt: time.Now()},
+				}
+			},
+			expectedStatus: fiber.StatusRequestEntityTooLarge,
+			expectedCode:   "BATCH_TOO_LARGE",
+		},
 	}
 
 	for _, tt := range tests {
@@ -304,6 +332,7 @@ func TestHandler_WriteBatch_ValidationErrors(t *testing.T) {
 				metadataManager: mockMeta,
 				queuePublisher:  mockQueue,
 				shardRouter:     shardRouter,
+				metadataSem:     make(chan struct{}, 100),
 			}
 
 			app := fiber.New()
@@ -438,6 +467,7 @@ func TestHandler_WriteBatch_Optimized_Success(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -528,6 +558,7 @@ func TestHandler_WriteBatch_RouteCache(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -591,6 +622,7 @@ func TestHandler_WriteBatch_UniqueDeviceTracking(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -669,6 +701,7 @@ func TestHandler_WriteBatch_EarliestTimestamp(t *testing.T) {
 		metadataManager: mockMeta,
 		queuePublisher:  mockQueue,
 		shardRouter:     shardRouter,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	app := fiber.New()
@@ -708,6 +741,7 @@ func TestTrackMetadataAsync(t *testing.T) {
 	handler := &Handler{
 		metadataManager: mockMeta,
 		logger:          logger,
+		metadataSem:     make(chan struct{}, 100),
 	}
 
 	// Create database and collection

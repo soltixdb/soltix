@@ -202,6 +202,7 @@ func NewStorageService(
 		walPartitioned,
 		memStore,
 		flushPool, // Pass flush pool for event-driven notifications
+		storageConfig.Timezone,
 	)
 	service.writeWorkerPool = writeWorkerPool
 	logger.Info("Write worker pool initialized with partitioned WAL")

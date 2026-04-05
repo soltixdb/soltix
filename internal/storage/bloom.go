@@ -20,18 +20,18 @@ func NewBloomFilter(n uint32, fpRate float64) *BloomFilter {
 	// Calculate optimal size and hash count
 	// m = -(n * ln(p)) / (ln(2)^2)
 	// k = (m/n) * ln(2)
-	
+
 	m := uint32(math.Ceil(-float64(n) * math.Log(fpRate) / (math.Ln2 * math.Ln2)))
 	k := uint32(math.Ceil((float64(m) / float64(n)) * math.Ln2))
-	
+
 	// Ensure at least 1 hash function
 	if k < 1 {
 		k = 1
 	}
-	
+
 	// Round up to byte boundary
 	byteSize := (m + 7) / 8
-	
+
 	return &BloomFilter{
 		bits:   make([]byte, byteSize),
 		size:   m,
@@ -57,12 +57,12 @@ func (bf *BloomFilter) MightContain(deviceID string) bool {
 		hash := bf.hash(deviceID, i)
 		byteIndex := hash / 8
 		bitIndex := hash % 8
-		
+
 		if (bf.bits[byteIndex] & (1 << bitIndex)) == 0 {
 			return false // Definitely not present
 		}
 	}
-	
+
 	return true // Might be present
 }
 
@@ -70,12 +70,12 @@ func (bf *BloomFilter) MightContain(deviceID string) bool {
 func (bf *BloomFilter) hash(deviceID string, seed uint32) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(deviceID))
-	
+
 	// Add seed to create different hash functions
 	if seed > 0 {
 		h.Write([]byte{byte(seed), byte(seed >> 8), byte(seed >> 16), byte(seed >> 24)})
 	}
-	
+
 	return h.Sum32() % bf.size
 }
 
@@ -101,7 +101,7 @@ func (bf *BloomFilter) EstimateFalsePositiveRate(itemsAdded uint32) float64 {
 	if itemsAdded == 0 {
 		return 0
 	}
-	
+
 	// FP rate ≈ (1 - e^(-k*n/m))^k
 	exponent := -float64(bf.hashes*itemsAdded) / float64(bf.size)
 	return math.Pow(1-math.Exp(exponent), float64(bf.hashes))

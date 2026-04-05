@@ -59,9 +59,26 @@ func inferFieldType(value interface{}) string {
 	}
 }
 
-// trackMetadataAsync tracks device ID and field schemas asynchronously
+// trackMetadataAsync tracks device ID and field schemas asynchronously.
+// Uses a semaphore to limit concurrent goroutines and prevent unbounded growth
+// when etcd is slow under heavy write load.
 func (h *Handler) trackMetadataAsync(database, collection, deviceID string, fields map[string]interface{}) {
+	// Non-blocking acquire: if semaphore is full, skip metadata tracking
+	// rather than blocking the write path or leaking goroutines.
+	select {
+	case h.metadataSem <- struct{}{}:
+		// Acquired semaphore slot
+	default:
+		// Semaphore full — skip metadata tracking to avoid goroutine buildup
+		h.logger.Debug("Metadata tracking skipped (semaphore full)",
+			"database", database,
+			"collection", collection,
+			"device_id", deviceID)
+		return
+	}
+
 	go func() {
+		defer func() { <-h.metadataSem }()
 		ctx, cancel := context.WithTimeout(context.Background(), utils.MetadataTrackingTimeout)
 		defer cancel()
 
@@ -303,6 +320,15 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 			Error: models.ErrorDetail{
 				Code:    "INVALID_REQUEST",
 				Message: "Points array cannot be empty",
+			},
+		})
+	}
+
+	if len(req.Points) > utils.MaxBatchSize {
+		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(models.ErrorResponse{
+			Error: models.ErrorDetail{
+				Code:    "BATCH_TOO_LARGE",
+				Message: fmt.Sprintf("Batch size %d exceeds maximum of %d points", len(req.Points), utils.MaxBatchSize),
 			},
 		})
 	}

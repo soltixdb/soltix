@@ -494,6 +494,13 @@ func (w *FlushWorker) run() {
 func (w *FlushWorker) flush() {
 	startTime := time.Now()
 
+	// Capture current pending count before flush.
+	// Notifications arriving DURING flush will increment pendingCount further;
+	// we only subtract what we captured to avoid losing those.
+	w.mu.Lock()
+	preFlushPending := w.pendingCount
+	w.mu.Unlock()
+
 	// PrepareFlush - flushes buffer, rotates to new segment, returns old segment files
 	segmentFiles, err := w.wal.PrepareFlushPartition(w.config.Database, w.config.Collection, w.config.Date)
 	if err != nil {
@@ -582,7 +589,10 @@ func (w *FlushWorker) flush() {
 
 	// Update metrics
 	w.mu.Lock()
-	w.pendingCount = 0
+	w.pendingCount -= preFlushPending
+	if w.pendingCount < 0 {
+		w.pendingCount = 0
+	}
 	w.totalFlushCount++
 	w.totalFlushedOps += int64(len(dataPoints))
 	w.lastFlush = time.Now()
