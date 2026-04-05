@@ -237,6 +237,7 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 	for _, nodeID := range nodes {
 		subject := fmt.Sprintf("soltix.write.node.%s", nodeID)
 		if err := h.queuePublisher.Publish(c.Context(), subject, msgData); err != nil {
+			metrics.RouterQueuePublishErrors.Inc()
 			h.logger.Error("Failed to publish write message to queue",
 				"error", err,
 				"subject", subject,
@@ -508,6 +509,7 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 	}
 
 	// Phase 4: Batch publish to each node and track failures
+	metrics.RouterBatchSize.Observe(float64(len(req.Points)))
 	publishedCount := 0
 	var successNodes []string
 	var failedNodes []string
@@ -517,6 +519,7 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 		totalExpectedMessages += len(messages)
 		count, err := h.queuePublisher.PublishBatch(ctx, messages)
 		if err != nil {
+			metrics.RouterQueuePublishErrors.Inc()
 			h.logger.Error("Failed to batch publish to node",
 				"error", err,
 				"node", nodeID,
@@ -578,7 +581,6 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusAccepted).JSON(response)
 	}
 
-	metrics.RouterBatchSize.Observe(float64(len(req.Points)))
 	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Inc()
 	response["status"] = "accepted"
 	response["message"] = "Batch write request accepted and queued for processing"

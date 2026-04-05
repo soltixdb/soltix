@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/soltixdb/soltix/internal/logging"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/wal"
 )
 
@@ -401,6 +402,7 @@ func (w *WriteWorker) processWrite(task *WriteTask) error {
 			"error", err)
 		return fmt.Errorf("failed to write to WAL: %w", err)
 	}
+	metrics.StorageWALWrites.Inc()
 
 	// Check if data is recent enough for memory store
 	dataAge := time.Since(task.DataPoint.Time)

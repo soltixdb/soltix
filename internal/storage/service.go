@@ -10,6 +10,7 @@ import (
 	"github.com/soltixdb/soltix/internal/aggregation"
 	"github.com/soltixdb/soltix/internal/compression"
 	"github.com/soltixdb/soltix/internal/logging"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/subscriber"
 	"github.com/soltixdb/soltix/internal/wal"
 )
@@ -257,6 +258,9 @@ func (s *StorageService) Start() error {
 		s.logger.Info("Background compaction worker started")
 	}
 
+	// Step 7: Start metrics reporter goroutine
+	go s.reportMetrics()
+
 	return nil
 }
 
@@ -374,6 +378,46 @@ func (s *StorageService) writeToStorageDirect(msg WriteMessage) error {
 	}
 
 	return nil
+}
+
+// reportMetrics periodically updates Prometheus gauge metrics
+func (s *StorageService) reportMetrics() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			// Memory store metrics
+			if s.memStore != nil {
+				metrics.StorageMemoryStoreSize.Set(float64(s.memStore.Size()))
+				metrics.StorageMemoryStoreCount.Set(float64(s.memStore.Count()))
+			}
+
+			// WAL segment count
+			if s.walPartitioned != nil {
+				if count, err := s.walPartitioned.GetTotalSegmentCount(); err == nil {
+					metrics.StorageWALSegments.Set(float64(count))
+				}
+			}
+
+			// Write worker queue size
+			if s.writeWorkerPool != nil {
+				stats := s.writeWorkerPool.Stats()
+				if workers, ok := stats["workers"].([]map[string]interface{}); ok {
+					totalPending := 0
+					for _, w := range workers {
+						if p, ok := w["pending"].(int); ok {
+							totalPending += p
+						}
+					}
+					metrics.StorageWriteWorkerQueueSize.Set(float64(totalPending))
+				}
+			}
+		}
+	}
 }
 
 // GetWAL returns the partitioned WAL instance for use by other components
