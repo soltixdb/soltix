@@ -461,8 +461,9 @@ func TestWriteMessage_Fields(t *testing.T) {
 // =============================================================================
 
 func TestWriteWorkerPool_TimezonePartitioning(t *testing.T) {
-	// Test that date partitioning uses configured timezone
-	jst, _ := time.LoadLocation("Asia/Tokyo")
+	// Test that date partitioning uses configured timezone.
+	// Use a fixed JST zone to avoid depending on external tzdata.
+	jst := time.FixedZone("JST", 9*60*60)
 
 	pool := &WriteWorkerPool{
 		timezone: jst,

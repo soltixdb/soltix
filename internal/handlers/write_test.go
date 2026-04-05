@@ -128,7 +128,7 @@ func TestHandler_Write_ValidationErrors(t *testing.T) {
 				metadataManager: mockMeta,
 				queuePublisher:  mockQueue,
 				shardRouter:     shardRouter,
-		metadataSem:     make(chan struct{}, 100),
+				metadataSem:     make(chan struct{}, 100),
 			}
 
 			app := fiber.New()
@@ -332,7 +332,7 @@ func TestHandler_WriteBatch_ValidationErrors(t *testing.T) {
 				metadataManager: mockMeta,
 				queuePublisher:  mockQueue,
 				shardRouter:     shardRouter,
-		metadataSem:     make(chan struct{}, 100),
+				metadataSem:     make(chan struct{}, 100),
 			}
 
 			app := fiber.New()
