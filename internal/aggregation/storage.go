@@ -1485,10 +1485,11 @@ func (s *Storage) mergeColumnarDataForWrite(existing, newData *ColumnarData) *Co
 		}
 	}
 
+	// Sort by timestamp to ensure consistent ordering
+	s.sortColumnarDataByTimestamp(merged)
+
 	return merged
 }
-
-// sortColumnarDataByTimestamp sorts columnar data by timestamp
 func (s *Storage) sortColumnarDataByTimestamp(data *ColumnarData) {
 	if data.RowCount() <= 1 {
 		return
