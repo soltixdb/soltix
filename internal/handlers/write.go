@@ -13,6 +13,7 @@ import (
 	"github.com/soltixdb/soltix/internal/coordinator"
 	"github.com/soltixdb/soltix/internal/models"
 	"github.com/soltixdb/soltix/internal/queue"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/utils"
 )
 
@@ -289,6 +290,7 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 	}
 
 	// All nodes succeeded
+	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Inc()
 	response["status"] = "accepted"
 	response["message"] = "Write request accepted and queued for processing"
 	return c.Status(fiber.StatusAccepted).JSON(response)
@@ -572,6 +574,8 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusAccepted).JSON(response)
 	}
 
+	metrics.RouterBatchSize.Observe(float64(len(req.Points)))
+	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Add(float64(len(req.Points)))
 	response["status"] = "accepted"
 	response["message"] = "Batch write request accepted and queued for processing"
 	return c.Status(fiber.StatusAccepted).JSON(response)

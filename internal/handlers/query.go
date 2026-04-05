@@ -3,8 +3,10 @@ package handlers
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/models"
 	"github.com/soltixdb/soltix/internal/services"
 )
@@ -155,6 +157,7 @@ func (h *Handler) QueryPost(c *fiber.Ctx) error {
 
 // executeQuery executes the query and returns the response
 func (h *Handler) executeQuery(c *fiber.Ctx, input *models.QueryRequest) error {
+	queryStart := time.Now()
 	// Validate input
 	err := input.Validate()
 	if err != nil {
@@ -206,5 +209,6 @@ func (h *Handler) executeQuery(c *fiber.Ctx, input *models.QueryRequest) error {
 		response["anomalies"] = result.Anomalies
 	}
 
+	metrics.RouterQueryDuration.WithLabelValues(input.Database, input.Collection).Observe(time.Since(queryStart).Seconds())
 	return c.JSON(response)
 }

@@ -3,9 +3,11 @@ package router
 import (
 	"path/filepath"
 
+	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soltixdb/soltix/internal/config"
 	"github.com/soltixdb/soltix/internal/handlers"
 	"github.com/soltixdb/soltix/internal/logging"
@@ -33,6 +35,9 @@ func Setup(app *fiber.App, logger *logging.Logger, metadataManager metadata.Mana
 
 	// Health check (no auth required)
 	app.Get("/health", h.Health)
+
+	// Prometheus metrics endpoint (no auth required)
+	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// API key authentication middleware
 	authMiddleware := middleware.APIKeyAuth(logger, cfg.Auth.APIKeys, cfg.Auth.Enabled)

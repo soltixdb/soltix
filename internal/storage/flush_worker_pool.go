@@ -6,6 +6,7 @@ import (
 
 	"github.com/soltixdb/soltix/internal/aggregation"
 	"github.com/soltixdb/soltix/internal/logging"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/wal"
 )
 
@@ -599,6 +600,8 @@ func (w *FlushWorker) flush() {
 	w.mu.Unlock()
 
 	duration := time.Since(startTime)
+	metrics.StorageFlushDuration.Observe(duration.Seconds())
+	metrics.StorageFlushPoints.Add(float64(len(dataPoints)))
 	w.logger.Info("Partition flush completed",
 		"partition", w.config.Key,
 		"entries", len(dataPoints),
