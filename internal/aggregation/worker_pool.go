@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/soltixdb/soltix/internal/logging"
+	"github.com/soltixdb/soltix/internal/metrics"
 )
 
 // =============================================================================
@@ -481,6 +482,7 @@ func (p *AggregationWorkerPool) processPartition(worker *PartitionWorker) {
 	var err error
 	var nextLevel AggregationLevel
 	var nextTimeKey time.Time
+	aggStart := time.Now()
 
 	switch worker.level {
 	case AggregationHourly:
@@ -509,10 +511,13 @@ func (p *AggregationWorkerPool) processPartition(worker *PartitionWorker) {
 	worker.mu.Unlock()
 
 	// Update stats
+	aggDuration := time.Since(aggStart).Seconds()
 	p.statsMu.Lock()
 	if err != nil {
 		p.totalFailed++
 		p.statsMu.Unlock()
+		metrics.AggregationProcessed.WithLabelValues(string(worker.level), "failed").Inc()
+		metrics.AggregationDuration.WithLabelValues(string(worker.level)).Observe(aggDuration)
 		p.logger.Error("Aggregation failed",
 			"key", worker.key,
 			"level", worker.level,
@@ -521,6 +526,8 @@ func (p *AggregationWorkerPool) processPartition(worker *PartitionWorker) {
 	}
 	p.totalProcessed++
 	p.statsMu.Unlock()
+	metrics.AggregationProcessed.WithLabelValues(string(worker.level), "success").Inc()
+	metrics.AggregationDuration.WithLabelValues(string(worker.level)).Observe(aggDuration)
 
 	// Notify next level if exists
 	if nextLevel != "" && worker.level != AggregationYearly {

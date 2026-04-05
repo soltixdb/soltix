@@ -6,6 +6,7 @@ import (
 
 	"github.com/soltixdb/soltix/internal/aggregation"
 	"github.com/soltixdb/soltix/internal/logging"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/wal"
 )
 
@@ -562,6 +563,8 @@ func (w *FlushWorker) flush() {
 
 	// Write to storage
 	if err := w.storage.WriteBatch(dataPoints); err != nil {
+		metrics.StorageFlushErrors.Inc()
+		metrics.StorageFlushDuration.Observe(time.Since(startTime).Seconds())
 		w.logger.Error("Failed to write batch to storage",
 			"partition", w.config.Key,
 			"points", len(dataPoints),
@@ -599,6 +602,8 @@ func (w *FlushWorker) flush() {
 	w.mu.Unlock()
 
 	duration := time.Since(startTime)
+	metrics.StorageFlushDuration.Observe(duration.Seconds())
+	metrics.StorageFlushPoints.Add(float64(len(dataPoints)))
 	w.logger.Info("Partition flush completed",
 		"partition", w.config.Key,
 		"entries", len(dataPoints),

@@ -13,6 +13,7 @@ import (
 	"github.com/soltixdb/soltix/internal/coordinator"
 	"github.com/soltixdb/soltix/internal/models"
 	"github.com/soltixdb/soltix/internal/queue"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/utils"
 )
 
@@ -236,6 +237,7 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 	for _, nodeID := range nodes {
 		subject := fmt.Sprintf("soltix.write.node.%s", nodeID)
 		if err := h.queuePublisher.Publish(c.Context(), subject, msgData); err != nil {
+			metrics.RouterQueuePublishErrors.Inc()
 			h.logger.Error("Failed to publish write message to queue",
 				"error", err,
 				"subject", subject,
@@ -260,6 +262,7 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 			"group_id", groupAssignment.GroupID,
 			"total_nodes", len(nodes),
 			"failed_nodes", failedNodes)
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "failed").Inc()
 		return c.Status(fiber.StatusServiceUnavailable).JSON(models.ErrorResponse{
 			Error: models.ErrorDetail{
 				Code:    "QUEUE_UNAVAILABLE",
@@ -285,10 +288,12 @@ func (h *Handler) Write(c *fiber.Ctx) error {
 		response["status"] = "partial"
 		response["failed_nodes"] = failedNodes
 		response["message"] = fmt.Sprintf("Write queued to %d/%d nodes. Some replicas may be missing.", len(successNodes), len(nodes))
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "partial").Inc()
 		return c.Status(fiber.StatusAccepted).JSON(response)
 	}
 
 	// All nodes succeeded
+	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Inc()
 	response["status"] = "accepted"
 	response["message"] = "Write request accepted and queued for processing"
 	return c.Status(fiber.StatusAccepted).JSON(response)
@@ -504,6 +509,7 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 	}
 
 	// Phase 4: Batch publish to each node and track failures
+	metrics.RouterBatchSize.Observe(float64(len(req.Points)))
 	publishedCount := 0
 	var successNodes []string
 	var failedNodes []string
@@ -513,6 +519,7 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 		totalExpectedMessages += len(messages)
 		count, err := h.queuePublisher.PublishBatch(ctx, messages)
 		if err != nil {
+			metrics.RouterQueuePublishErrors.Inc()
 			h.logger.Error("Failed to batch publish to node",
 				"error", err,
 				"node", nodeID,
@@ -531,6 +538,7 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 			"collection", collection,
 			"total_points", len(req.Points),
 			"failed_nodes", failedNodes)
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "failed").Inc()
 		return c.Status(fiber.StatusServiceUnavailable).JSON(models.ErrorResponse{
 			Error: models.ErrorDetail{
 				Code:    "QUEUE_UNAVAILABLE",
@@ -569,9 +577,11 @@ func (h *Handler) WriteBatch(c *fiber.Ctx) error {
 		response["status"] = "partial"
 		response["failed_nodes"] = failedNodes
 		response["message"] = fmt.Sprintf("Batch write queued to %d/%d nodes. Some replicas may be missing.", len(successNodes), len(nodeMessages))
+		metrics.RouterWriteRequests.WithLabelValues(database, collection, "partial").Inc()
 		return c.Status(fiber.StatusAccepted).JSON(response)
 	}
 
+	metrics.RouterWriteRequests.WithLabelValues(database, collection, "accepted").Inc()
 	response["status"] = "accepted"
 	response["message"] = "Batch write request accepted and queued for processing"
 	return c.Status(fiber.StatusAccepted).JSON(response)

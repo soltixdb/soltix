@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/soltixdb/soltix/internal/logging"
+	"github.com/soltixdb/soltix/internal/metrics"
 	"github.com/soltixdb/soltix/internal/storage"
 	"github.com/soltixdb/soltix/internal/wal"
 )
@@ -276,6 +277,8 @@ func (m *Manager) syncGroup(ctx context.Context, group GroupInfo) error {
 
 		err := m.syncGroupFromReplica(ctx, group, replica, progress)
 		if err == nil {
+			metrics.SyncOperations.WithLabelValues("group", "success").Inc()
+			metrics.SyncPointsSynced.Add(float64(progress.SyncedPoints))
 			m.logger.Info("Group sync completed",
 				"group_id", group.GroupID,
 				"from_replica", replica.ID,
@@ -298,6 +301,7 @@ func (m *Manager) syncGroup(ctx context.Context, group GroupInfo) error {
 			"error", err)
 	}
 
+	metrics.SyncOperations.WithLabelValues("group", "failed").Inc()
 	m.emitEvent(SyncEvent{
 		Type:      SyncEventFailed,
 		GroupID:   group.GroupID,
