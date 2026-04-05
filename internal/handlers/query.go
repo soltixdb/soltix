@@ -158,6 +158,9 @@ func (h *Handler) QueryPost(c *fiber.Ctx) error {
 // executeQuery executes the query and returns the response
 func (h *Handler) executeQuery(c *fiber.Ctx, input *models.QueryRequest) error {
 	queryStart := time.Now()
+	defer func() {
+		metrics.RouterQueryDuration.WithLabelValues(input.Database, input.Collection).Observe(time.Since(queryStart).Seconds())
+	}()
 	// Validate input
 	err := input.Validate()
 	if err != nil {
@@ -209,6 +212,5 @@ func (h *Handler) executeQuery(c *fiber.Ctx, input *models.QueryRequest) error {
 		response["anomalies"] = result.Anomalies
 	}
 
-	metrics.RouterQueryDuration.WithLabelValues(input.Database, input.Collection).Observe(time.Since(queryStart).Seconds())
 	return c.JSON(response)
 }

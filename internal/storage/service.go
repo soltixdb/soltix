@@ -382,7 +382,7 @@ func (s *StorageService) writeToStorageDirect(msg WriteMessage) error {
 
 // reportMetrics periodically updates Prometheus gauge metrics
 func (s *StorageService) reportMetrics() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
