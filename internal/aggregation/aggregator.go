@@ -81,7 +81,7 @@ func (af *AggregatedField) Merge(other *AggregatedField) {
 		return
 	}
 	// Guard against corrupted aggregated fields
-	if !isValidFloat(other.Sum) || !isValidFloat(other.Min) || !isValidFloat(other.Max) {
+	if !isValidFloat(other.Sum) || !isValidFloat(other.Min) || !isValidFloat(other.Max) || !isValidFloat(other.SumSquares) || !isValidFloat(other.Avg) {
 		return
 	}
 

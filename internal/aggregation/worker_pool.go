@@ -605,18 +605,15 @@ func (p *AggregationWorkerPool) cleanupStoppedWorkers() {
 // =============================================================================
 
 // aggregateHourly aggregates raw data to hourly.
-// Optimization: reads only data around the timeKey hour instead of the entire day.
-// Uses a 2-hour window centered on timeKey to handle edge cases.
+// Reads the full day of raw data and re-aggregates all hours.
+// The BatchDelay dedup ensures this doesn't run too frequently.
 func (p *AggregationWorkerPool) aggregateHourly(worker *PartitionWorker) error {
-	// Determine which hour(s) to aggregate based on timeKey
-	// Read the full day since we don't know exactly which hours were affected,
-	// but this is an idempotent replace operation — the aggStorage.WriteHourly
-	// handles dedup.
+	// Read raw data for the day
 	dayStart := time.Date(
 		worker.timeKey.Year(), worker.timeKey.Month(), worker.timeKey.Day(),
 		0, 0, 0, 0, p.config.Timezone,
 	)
-	dayEnd := dayStart.Add(24 * time.Hour)
+	dayEnd := dayStart.AddDate(0, 0, 1) // Use AddDate for DST-safe day boundary
 
 	dataPoints, err := p.rawReader.Query(worker.database, worker.collection, nil, dayStart, dayEnd, nil)
 	if err != nil {
@@ -635,7 +632,9 @@ func (p *AggregationWorkerPool) aggregateHourly(worker *PartitionWorker) error {
 	byDeviceHour := make(map[hourKey][]*RawDataPoint)
 	for _, dp := range dataPoints {
 		deviceID := dp.GetID()
-		hourStart := dp.GetTime().In(p.config.Timezone).Truncate(time.Hour)
+		localTime := dp.GetTime().In(p.config.Timezone)
+		hourStart := time.Date(localTime.Year(), localTime.Month(), localTime.Day(),
+			localTime.Hour(), 0, 0, 0, p.config.Timezone)
 		key := hourKey{deviceID: deviceID, hour: hourStart}
 		byDeviceHour[key] = append(byDeviceHour[key], &RawDataPoint{
 			Time:   dp.GetTime(),
