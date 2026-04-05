@@ -440,7 +440,6 @@ func TestDownloadService_CreateDownload_InvalidCollection(t *testing.T) {
 
 func TestDownloadService_GetFilePath_Expired(t *testing.T) {
 	svc, _ := createTestDownloadService(t)
-	defer svc.Stop()
 
 	// Create a download task with immediate expiration
 	req := &models.DownloadRequest{
@@ -455,6 +454,10 @@ func TestDownloadService_GetFilePath_Expired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDownload failed: %v", err)
 	}
+
+	// Stop the service first to prevent background workers from racing with
+	// the manual task mutation below.
+	svc.Stop()
 
 	// Manually set task to expired
 	svc.taskMutex.Lock()
@@ -481,7 +484,6 @@ func TestDownloadService_GetFilePath_Expired(t *testing.T) {
 
 func TestDownloadService_GetFilePath_FileNotExists(t *testing.T) {
 	svc, _ := createTestDownloadService(t)
-	defer svc.Stop()
 
 	req := &models.DownloadRequest{
 		Database:   "testdb",
@@ -495,6 +497,10 @@ func TestDownloadService_GetFilePath_FileNotExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDownload failed: %v", err)
 	}
+
+	// Stop the service first to prevent background workers from racing with
+	// the manual task mutation below.
+	svc.Stop()
 
 	// Manually set task to completed with non-existent file
 	svc.taskMutex.Lock()
