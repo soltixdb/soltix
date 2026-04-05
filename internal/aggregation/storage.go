@@ -1502,7 +1502,12 @@ func (s *Storage) sortColumnarDataByTimestamp(data *ColumnarData) {
 	}
 
 	sort.Slice(indices, func(i, j int) bool {
-		return data.Timestamps[indices[i]] < data.Timestamps[indices[j]]
+		ti, tj := data.Timestamps[indices[i]], data.Timestamps[indices[j]]
+		if ti != tj {
+			return ti < tj
+		}
+		// Deterministic tie-breaker by deviceID
+		return data.DeviceIDs[indices[i]] < data.DeviceIDs[indices[j]]
 	})
 
 	newTimestamps := make([]int64, n)

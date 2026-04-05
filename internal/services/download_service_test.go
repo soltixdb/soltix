@@ -440,6 +440,12 @@ func TestDownloadService_CreateDownload_InvalidCollection(t *testing.T) {
 
 func TestDownloadService_GetFilePath_Expired(t *testing.T) {
 	svc, _ := createTestDownloadService(t)
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			svc.Stop()
+		}
+	})
 
 	// Create a download task with immediate expiration
 	req := &models.DownloadRequest{
@@ -458,6 +464,7 @@ func TestDownloadService_GetFilePath_Expired(t *testing.T) {
 	// Stop the service first to prevent background workers from racing with
 	// the manual task mutation below.
 	svc.Stop()
+	stopped = true
 
 	// Manually set task to expired
 	svc.taskMutex.Lock()
@@ -484,6 +491,12 @@ func TestDownloadService_GetFilePath_Expired(t *testing.T) {
 
 func TestDownloadService_GetFilePath_FileNotExists(t *testing.T) {
 	svc, _ := createTestDownloadService(t)
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			svc.Stop()
+		}
+	})
 
 	req := &models.DownloadRequest{
 		Database:   "testdb",
@@ -502,6 +515,7 @@ func TestDownloadService_GetFilePath_FileNotExists(t *testing.T) {
 	// the manual task mutation below.
 	svc.Stop()
 
+	stopped = true
 	// Manually set task to completed with non-existent file
 	svc.taskMutex.Lock()
 	if t, ok := svc.tasks[task.RequestID]; ok {
@@ -627,6 +641,12 @@ func TestDownloadService_ConcurrentCreateDownloads(t *testing.T) {
 
 func TestDownloadService_GetFilePath_Success(t *testing.T) {
 	svc, tmpDir := createTestDownloadService(t)
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			svc.Stop()
+		}
+	})
 
 	req := &models.DownloadRequest{
 		Database:   "testdb",
@@ -646,6 +666,7 @@ func TestDownloadService_GetFilePath_Success(t *testing.T) {
 	// the manual task mutation below.
 	svc.Stop()
 
+	stopped = true
 	// Manually set task to completed and create the file
 	expectedPath := filepath.Join(tmpDir, task.RequestID+".csv")
 	if err := os.WriteFile(expectedPath, []byte("test,data\n1,2\n"), 0o644); err != nil {
