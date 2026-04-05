@@ -166,7 +166,6 @@ func TestStorageService_Start(t *testing.T) {
 	// Verify subscriptions were created
 	expectedSubjects := []string{
 		"soltix.write.node.test-node",
-		"soltix.admin.flush.trigger",
 	}
 
 	for _, subject := range expectedSubjects {

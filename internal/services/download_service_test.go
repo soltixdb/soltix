@@ -621,7 +621,6 @@ func TestDownloadService_ConcurrentCreateDownloads(t *testing.T) {
 
 func TestDownloadService_GetFilePath_Success(t *testing.T) {
 	svc, tmpDir := createTestDownloadService(t)
-	defer svc.Stop()
 
 	req := &models.DownloadRequest{
 		Database:   "testdb",
@@ -636,6 +635,10 @@ func TestDownloadService_GetFilePath_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDownload failed: %v", err)
 	}
+
+	// Stop the service first to prevent background workers from racing with
+	// the manual task mutation below.
+	svc.Stop()
 
 	// Manually set task to completed and create the file
 	expectedPath := filepath.Join(tmpDir, task.RequestID+".csv")
