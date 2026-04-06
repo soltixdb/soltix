@@ -765,7 +765,7 @@ func TestStorageService_ReplayWAL_RecentData(t *testing.T) {
 	}
 
 	// Write recent data to WAL (within maxAge)
-	recentTime := time.Now().Add(-30 * time.Minute)
+	recentTime := time.Now().Add(-5 * time.Minute)
 	writeMsg := WriteMessage{
 		Database:   "testdb",
 		Collection: "metrics",
@@ -942,7 +942,7 @@ func TestStorageService_ReplayWAL_MultiplePartitions(t *testing.T) {
 	}
 
 	// Write data to multiple databases/collections
-	recentTime := time.Now().Add(-30 * time.Minute)
+	recentTime := time.Now().Add(-5 * time.Minute)
 
 	messages := []WriteMessage{
 		{
@@ -1056,7 +1056,7 @@ func TestStorageService_ReplayWAL_MixedData(t *testing.T) {
 	}
 
 	// Write mix of recent and old data
-	recentTime := time.Now().Add(-30 * time.Minute)
+	recentTime := time.Now().Add(-5 * time.Minute)
 	oldTime := time.Now().Add(-2 * time.Hour)
 
 	messages := []WriteMessage{
@@ -1166,7 +1166,7 @@ func TestStorageService_ReplayWAL_SegmentProcessing(t *testing.T) {
 	}
 
 	// Write multiple messages to create segments
-	recentTime := time.Now().Add(-30 * time.Minute)
+	recentTime := time.Now().Add(-5 * time.Minute)
 	for i := 0; i < 10; i++ {
 		writeMsg := WriteMessage{
 			Database:   "testdb",
@@ -1387,8 +1387,9 @@ func TestStorageService_ReplayWAL_LargeDataset(t *testing.T) {
 		t.Fatalf("failed to create storage service: %v", err)
 	}
 
-	// Write 100 recent entries
-	recentTime := time.Now().Add(-30 * time.Minute)
+	// Write 100 recent entries — use -5min to ensure they stay within maxAge
+	// even under slow CI with -race flag
+	recentTime := time.Now().Add(-5 * time.Minute)
 	entryCount := 100
 
 	for i := 0; i < entryCount; i++ {
