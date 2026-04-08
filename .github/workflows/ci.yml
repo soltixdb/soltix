@@ -114,7 +114,7 @@ jobs:
         go build -ldflags "$LDFLAGS" -o bin/storage-${{ matrix.name }} ./cmd/services/storage
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: binaries-${{ matrix.name }}
         path: bin/*
